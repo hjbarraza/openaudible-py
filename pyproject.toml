@@ -16,7 +16,7 @@ dependencies = [
   "python-mpv>=1.0.7",
   "mutagen>=1.47",
   "playwright>=1.40",
-  "rich-pixels>=3.0",
+  "textual-image>=0.12",
   "pillow>=10",
 ]
 

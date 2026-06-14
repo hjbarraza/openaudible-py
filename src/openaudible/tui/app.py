@@ -13,6 +13,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
+from textual_image.widget import Image as CoverImage
 
 from .. import auth as auth_mod
 from ..catalog import Catalog
@@ -133,7 +134,7 @@ class OpenAudibleApp(App):
     #main { height: 1fr; }
     #library { width: 2fr; }
     #side { width: 1fr; border-left: solid $panel; padding: 0 1; }
-    #cover { height: auto; max-height: 16; content-align: center top; }
+    #cover { height: 18; }
     #detail { height: auto; }
     #search { dock: top; display: none; }
     #search.visible { display: block; }
@@ -179,7 +180,7 @@ class OpenAudibleApp(App):
         with Horizontal(id="main"):
             yield DataTable(id="library")
             with Vertical(id="side"):
-                yield Static(id="cover")
+                yield CoverImage(id="cover")
                 yield Static(id="detail")
         yield RichLog(id="log", markup=True)
         yield Footer()
@@ -249,24 +250,20 @@ class OpenAudibleApp(App):
         detail.update("\n".join(lines))
 
     # ---- cover art ----
+    # Rendered by textual-image, which auto-selects the best protocol the
+    # terminal supports (Kitty / Sixel / iTerm2) and falls back to half-cells.
     def _cover_path(self, asin: str):
         return self.cfg.covers_dir / f"{asin}.jpg"
 
-    def _pixels(self, path):
+    def _show_cover(self, path) -> None:
         try:
-            from PIL import Image
-            from rich_pixels import Pixels
-            with Image.open(path) as img:
-                img = img.convert("RGB")
-                img.thumbnail((24, 24))
-                return Pixels.from_image(img)
+            self.query_one("#cover", CoverImage).image = str(path) if path else None
         except Exception:
-            return ""
+            pass
 
     def update_cover(self, book: Optional[Book]) -> None:
-        cover = self.query_one("#cover", Static)
         if not book or not book.cover_url:
-            cover.update("")
+            self._show_cover(None)
             self._cover_for = None
             return
         if self._cover_for == book.asin:
@@ -274,9 +271,9 @@ class OpenAudibleApp(App):
         self._cover_for = book.asin
         path = self._cover_path(book.asin)
         if path.exists():
-            cover.update(self._pixels(path))
+            self._show_cover(path)
         else:
-            cover.update("[dim]loading cover…[/dim]")
+            self._show_cover(None)
             self.load_cover(book.asin, book.cover_url)
 
     @work(thread=True, group="cover", exclusive=True)
@@ -294,7 +291,7 @@ class OpenAudibleApp(App):
 
     def _cover_loaded(self, asin: str, path) -> None:
         if self.selected_asin() == asin:  # selection may have moved on
-            self.query_one("#cover", Static).update(self._pixels(path))
+            self._show_cover(path)
 
     def log_line(self, text: str) -> None:
         self.query_one("#log", RichLog).write(text)
