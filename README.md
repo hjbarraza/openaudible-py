@@ -33,17 +33,24 @@ An open-source Python take on OpenAudible.
 It also handles **chapters + cover art** (preserved losslessly), **import** of your
 own local audiobooks, and **export** of the catalog to CSV/JSON.
 
+### Keys
+
 | Key | Action |
 |-----|--------|
 | `Enter` | get if new, play if already converted |
-| `g` | get — download + de-DRM + convert (background) |
-| `p` | play · `o` open folder · `c` cancel |
-| `a` | get ALL un-converted books in view |
-| `t` | sort: author → title → recently bought |
-| `s` | sync library · `/` search |
+| `g` / `a` | get selected / get all un-converted in view |
+| `c` | cancel this book's job (queued or running) |
+| `p` / `o` | play (built-in) / open the book's folder |
+| `m` / `n` | cycle read status / show notes & bookmarks |
+| `e` / `F` | edit metadata / auto-fill from Audible |
+| `t` / `/` | sort (author → title → recent) / search |
+| `s` | sync library from Audible |
 | `l` / `L` | log in (browser) / log out |
-| `j`/`k`, arrows, PgUp/PgDn, Home/End, `Ctrl+U`/`Ctrl+D` | move |
-| `r` refresh · `esc` clear · `?` help · `q` quit | |
+| `r` / `esc` / `?` / `q` | refresh / clear search / help / quit |
+| `j` `k`, arrows, PgUp/PgDn, Home/End, `Ctrl+U`/`Ctrl+D` | move |
+| **player:** `space` `x` `[` `]` `-` `=` `f` `b` | pause · stop · prev/next chapter · slower/faster · ∓30s |
+
+Press `?` in the app for this list any time.
 
 ## Requirements
 
@@ -74,18 +81,13 @@ On first run it opens a browser to sign in to Audible, then press `s` to sync.
 Crisp cover art needs a graphics-capable terminal (Ghostty, Kitty, WezTerm,
 iTerm2); other terminals fall back to block art.
 
-### Run from anywhere (no venv activation)
+### Run from anywhere
 
-Symlink the commands onto your PATH (the venv scripts are self-contained):
+`setup.sh` already symlinks `openaudible` / `openaudible-tui` into `~/.local/bin`,
+so they run from any directory once that's on your `PATH`. With the manual
+install, link them yourself:
 
-    mkdir -p ~/.local/bin
-    ln -sf "$PWD/.venv/bin/openaudible" ~/.local/bin/openaudible
     ln -sf "$PWD/.venv/bin/openaudible-tui" ~/.local/bin/openaudible-tui
-
-Now `openaudible` / `openaudible-tui` work from any directory. (Ensure
-`~/.local/bin` is on your `PATH`.) Or add a shell alias instead:
-
-    echo 'alias openaudible-tui="$HOME/Code/openaudible-py/.venv/bin/openaudible-tui"' >> ~/.zshrc
 
 ## Login
 
