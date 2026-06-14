@@ -9,7 +9,7 @@ from .models import Book
 
 LIBRARY_RESPONSE_GROUPS = (
     "product_desc, product_attrs, contributors, series, "
-    "product_extended_attrs, media"
+    "product_extended_attrs, media, pdf_url"
 )
 
 
@@ -49,13 +49,21 @@ DOWNLOAD_USER_AGENT = "Audible/671 CFNetwork/1240.0.4 Darwin/20.6.0"
 async def _stream_to_file(session, url: str, dst: Path, cancel_check=None,
                           on_progress=None) -> None:
     # The signed CloudFront URL must be fetched through Audible's authenticated
-    # session; a bare httpx client gets a 403.
+    # session; a bare httpx client gets a 403. A leftover .part file is resumed
+    # via a Range request (falls back to a full re-download if unsupported).
     tmp = dst.with_suffix(dst.suffix + ".part")
-    with open(tmp, "wb") as fh:
-        async with session.stream("GET", url, follow_redirects=True) as resp:
-            resp.raise_for_status()
-            total = int(resp.headers.get("content-length") or 0) or None
-            written = 0
+    start = tmp.stat().st_size if tmp.exists() else 0
+    headers = {"Range": f"bytes={start}-"} if start else {}
+    async with session.stream("GET", url, follow_redirects=True,
+                              headers=headers) as resp:
+        resp.raise_for_status()
+        resuming = start > 0 and resp.status_code == 206
+        if start and not resuming:
+            start = 0  # server ignored Range → got the whole file; start over
+        remaining = int(resp.headers.get("content-length") or 0)
+        total = (start + remaining) if remaining else None
+        written = start
+        with open(tmp, "ab" if resuming else "wb") as fh:
             async for chunk in resp.aiter_bytes():
                 if cancel_check and cancel_check():
                     raise RuntimeError("canceled")
@@ -64,6 +72,33 @@ async def _stream_to_file(session, url: str, dst: Path, cancel_check=None,
                 if on_progress:
                     on_progress(written, total)
     tmp.replace(dst)
+
+
+async def _download_authed(auth, url: str, dst: Path) -> None:
+    async with audible.AsyncClient(auth=auth) as client:
+        client.session.headers["User-Agent"] = DOWNLOAD_USER_AGENT
+        Path(dst).parent.mkdir(parents=True, exist_ok=True)
+        await _stream_to_file(client.session, url, Path(dst))
+
+
+def download_pdf(auth, url: str, dst: Path) -> Path:
+    """Download a companion PDF through the authed session."""
+    asyncio.run(_download_authed(auth, url, Path(dst)))
+    return Path(dst)
+
+
+async def _get_annotations(auth, asin: str):
+    async with audible.AsyncClient(auth=auth) as client:
+        lib = await Library.from_api_full_sync(
+            client, response_groups="relationships")
+        item = next((i for i in lib if i.asin == asin), None)
+        if item is None:
+            raise ValueError(f"asin not in library: {asin}")
+        return await item.get_annotations()
+
+
+def get_annotations(auth, asin: str):
+    return asyncio.run(_get_annotations(auth, asin))
 
 
 async def _fetch_book(auth, asin: str, aax_dir: Path, quality: str = "high",

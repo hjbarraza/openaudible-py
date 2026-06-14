@@ -19,16 +19,28 @@ def default_books_dir() -> Path:
     return Path.home() / "Documents" / "audiobooks"
 
 
+def _env_flag(name: str, default: bool) -> bool:
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    return val.strip().lower() in ("1", "true", "yes", "on")
+
+
 @dataclass
 class Config:
     base_dir: Path = field(default_factory=default_base_dir)
     books_dir: Path = field(default_factory=default_books_dir)
     output_format: str = "m4b"
     marketplace: str = "us"
+    download_pdfs: bool = True          # OPENAUDIBLE_NO_PDF=1 to disable
+    delete_source: bool = False         # OPENAUDIBLE_DELETE_AAX=1 to enable
 
     @classmethod
     def load(cls) -> "Config":
-        return cls()
+        return cls(
+            download_pdfs=not _env_flag("OPENAUDIBLE_NO_PDF", False),
+            delete_source=_env_flag("OPENAUDIBLE_DELETE_AAX", False),
+        )
 
     def __post_init__(self) -> None:
         self.base_dir = Path(self.base_dir)

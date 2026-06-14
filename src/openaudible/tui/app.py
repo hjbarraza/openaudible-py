@@ -17,15 +17,16 @@ from textual_image.widget import Image as CoverImage
 
 from .. import auth as auth_mod
 from ..catalog import Catalog
-from ..client import fetch_library
+from ..client import fetch_library, get_annotations
 from ..config import Config
 from ..convert import ConversionError
-from ..jobs import output_path, process_book
+from ..jobs import book_file, output_path, process_book
 from ..models import Book
 
 MAX_CONCURRENT = 2
 HALF_PAGE = 10
 SORTS = ["author", "title", "recent"]
+READ_CYCLE = ["", "reading", "finished", "dnf", "unread"]
 
 
 def sort_books(books: list[Book], mode: str) -> list[Book]:
@@ -98,9 +99,13 @@ HELP_TEXT = """[b]openaudible — keyboard controls[/b]
 [b cyan]Act on the selected book[/b cyan]
   Enter             get if new, play if already converted
   g                 get  (download + de-DRM + convert)
-  p                 play in your OS player
+  p                 play (built-in audio player)
   o                 open the book's folder
   c                 cancel this book's job
+  m                 cycle read status   ·   n  show notes/bookmarks
+
+[b cyan]Player[/b cyan]
+  space pause · x stop · [ ] chapter · - = speed · f/b ±30s
 
 [b cyan]Library[/b cyan]
   a                 get ALL un-converted books in view
@@ -157,6 +162,18 @@ class OpenAudibleApp(App):
         Binding("slash", "search", "Search"),
         Binding("question_mark", "help", "Help"),
         Binding("q", "quit", "Quit"),
+        # Read status + annotations.
+        Binding("m", "mark_read", "Mark", show=False),
+        Binding("n", "annotations", "Notes", show=False),
+        # Playback (in-app, hidden from the footer).
+        Binding("space", "pause", "Pause", show=False),
+        Binding("x", "stop", "Stop", show=False),
+        Binding("right_square_bracket", "next_chapter", "Next ch", show=False),
+        Binding("left_square_bracket", "prev_chapter", "Prev ch", show=False),
+        Binding("equals_sign", "speed_up", "Faster", show=False),
+        Binding("minus", "speed_down", "Slower", show=False),
+        Binding("f", "seek_fwd", "Fwd", show=False),
+        Binding("b", "seek_back", "Back", show=False),
         # Account (hidden from the footer).
         Binding("l", "login", "Login", show=False),
         Binding("L", "logout", "Logout", show=False),
@@ -180,6 +197,7 @@ class OpenAudibleApp(App):
         self._waiting: deque[str] = deque()          # waiting asins
         self._busy: set[str] = set()            # asins in a worker
         self._cover_for: Optional[str] = None   # asin whose cover is shown
+        self._player = None                     # lazily created mpv player
 
     # ---- layout ----
     def compose(self) -> ComposeResult:
@@ -253,8 +271,11 @@ class OpenAudibleApp(App):
             f"[cyan]ASIN[/cyan]      {book.asin}",
             "",
             f"[cyan]Status[/cyan]    {self._status.get(book.asin) or state}",
+            f"[cyan]Read[/cyan]      {book.read_status or '—'}",
         ]
-        out = output_path(self.cfg, book)
+        if book.pdf_url:
+            lines.append("[cyan]PDF[/cyan]       available")
+        out = book_file(self.cfg, book)
         if book.converted and out.exists():
             lines += ["", f"[dim]{out}[/dim]"]
         detail.update("\n".join(lines))
@@ -383,17 +404,93 @@ class OpenAudibleApp(App):
         opener = "open" if sys.platform == "darwin" else "xdg-open"
         subprocess.Popen([opener, str(path)])
 
+    def _ensure_player(self):
+        if self._player is None:
+            from ..player import Player
+            self._player = Player()
+        return self._player
+
     def _play(self, book: Book) -> None:
-        path = output_path(self.cfg, book)
+        path = book_file(self.cfg, book)
         if not path.exists():
             self.notify("Not converted yet — press g to get it.", severity="warning")
             return
-        self._open(path)
+        try:
+            self._ensure_player().play(path)
+        except Exception as exc:
+            self.notify(f"Playback unavailable: {exc}", severity="error")
+            return
+        self.log_line(f"[green]▶ Playing[/green] {book.title}  "
+                      "[dim](space pause · [ ] chapter · -/= speed · x stop)[/dim]")
 
     def action_play(self) -> None:
         book = self.selected_book()
         if book:
             self._play(book)
+
+    def _player_cmd(self, fn, *a) -> None:
+        if self._player is not None and self._player.playing:
+            fn(*a)
+
+    def action_pause(self) -> None:
+        if self._player is not None and self._player.playing:
+            self._player.toggle_pause()
+            self.log_line("[dim]⏸ paused[/dim]" if self._player.paused
+                          else "[dim]▶ resumed[/dim]")
+
+    def action_stop(self) -> None:
+        if self._player is not None and self._player.playing:
+            self._player.stop()
+            self.log_line("[dim]⏹ stopped[/dim]")
+
+    def action_next_chapter(self) -> None:
+        self._player_cmd(lambda: self._player.next_chapter())
+
+    def action_prev_chapter(self) -> None:
+        self._player_cmd(lambda: self._player.prev_chapter())
+
+    def action_seek_fwd(self) -> None:
+        self._player_cmd(lambda: self._player.seek(30))
+
+    def action_seek_back(self) -> None:
+        self._player_cmd(lambda: self._player.seek(-30))
+
+    def action_speed_up(self) -> None:
+        if self._player is not None and self._player.playing:
+            self.log_line(f"[dim]speed {self._player.change_speed(0.1)}x[/dim]")
+
+    def action_speed_down(self) -> None:
+        if self._player is not None and self._player.playing:
+            self.log_line(f"[dim]speed {self._player.change_speed(-0.1)}x[/dim]")
+
+    def action_mark_read(self) -> None:
+        book = self.selected_book()
+        if not book:
+            return
+        i = READ_CYCLE.index(book.read_status) if book.read_status in READ_CYCLE else 0
+        nxt = READ_CYCLE[(i + 1) % len(READ_CYCLE)]
+        self.catalog.set_read_status(book.asin, nxt)
+        self.update_detail()
+        self.notify(f"Read status: {nxt or 'cleared'}")
+
+    def action_annotations(self) -> None:
+        book = self.selected_book()
+        if not book:
+            return
+        if self.get_auth() is None:
+            self.notify("Not logged in.", severity="error")
+            return
+        self.log_line(f"[yellow]Fetching notes for[/yellow] {book.title}…")
+        self.run_annotations(book.asin)
+
+    @work(thread=True, group="annot", exclusive=True)
+    def run_annotations(self, asin: str) -> None:
+        try:
+            data = get_annotations(self.get_auth(), asin)
+        except Exception as exc:
+            self.call_from_thread(self.log_line, f"[red]Notes failed[/red]: {exc}")
+            return
+        self.call_from_thread(self.log_line, f"[cyan]Notes:[/cyan] {data}")
 
     def action_open_folder(self) -> None:
         book = self.selected_book()

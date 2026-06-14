@@ -20,6 +20,9 @@ class Book:
     purchase_date: str = ""
     fmt: str = ""           # aax | aaxc | ""
     cover_url: str = ""
+    pdf_url: str = ""
+    read_status: str = ""   # "" | unread | reading | finished | dnf
+    local_path: str = ""    # set for imported (non-Audible) books
     downloaded: bool = False
     converted: bool = False
     extra: dict = field(default_factory=dict)
@@ -49,6 +52,7 @@ class Book:
             runtime_min=int(item.get("runtime_length_min") or 0),
             purchase_date=item.get("purchase_date", "") or "",
             cover_url=cover_url,
+            pdf_url=item.get("pdf_url", "") or "",
         )
 
     @property

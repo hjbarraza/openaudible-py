@@ -58,3 +58,33 @@ def test_logout_when_not_logged_in(tmp_path, monkeypatch):
     result = runner.invoke(app, ["logout"])
     assert result.exit_code == 0
     assert "Not logged in" in result.stdout
+
+
+def test_import_command(tmp_path, monkeypatch, request):
+    monkeypatch.setenv("OPENAUDIBLE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("OPENAUDIBLE_BOOKS", str(tmp_path / "books"))
+    sample = request.getfixturevalue("sample_m4a")
+    result = runner.invoke(app, ["import", str(sample)])
+    assert result.exit_code == 0
+    assert "Imported" in result.stdout
+    assert len(Catalog(Config.load().db_file).all()) == 1
+
+
+def test_export_command(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAUDIBLE_HOME", str(tmp_path))
+    cfg = Config.load()
+    Catalog(cfg.db_file).sync([Book(asin="1", title="Dune", author="Herbert")])
+    out = tmp_path / "lib.json"
+    result = runner.invoke(app, ["export", str(out)])
+    assert result.exit_code == 0 and out.exists()
+    import json
+    assert json.loads(out.read_text())[0]["title"] == "Dune"
+
+
+def test_read_command(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAUDIBLE_HOME", str(tmp_path))
+    cfg = Config.load()
+    Catalog(cfg.db_file).sync([Book(asin="1", title="Dune")])
+    result = runner.invoke(app, ["read", "1", "finished"])
+    assert result.exit_code == 0
+    assert Catalog(cfg.db_file).get("1").read_status == "finished"

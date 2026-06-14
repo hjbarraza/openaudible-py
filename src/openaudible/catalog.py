@@ -16,10 +16,16 @@ CREATE TABLE IF NOT EXISTS books (
     purchase_date TEXT,
     fmt TEXT,
     cover_url TEXT,
+    pdf_url TEXT,
+    read_status TEXT,
+    local_path TEXT,
     downloaded INTEGER DEFAULT 0,
     converted INTEGER DEFAULT 0
 );
 """
+
+_MIGRATIONS = {"cover_url": "TEXT", "pdf_url": "TEXT", "read_status": "TEXT",
+               "local_path": "TEXT"}
 
 
 class Catalog:
@@ -32,8 +38,9 @@ class Catalog:
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
             cols = {r[1] for r in conn.execute("PRAGMA table_info(books)")}
-            if "cover_url" not in cols:  # migrate older databases
-                conn.execute("ALTER TABLE books ADD COLUMN cover_url TEXT")
+            for name, sqltype in _MIGRATIONS.items():  # migrate older databases
+                if name not in cols:
+                    conn.execute(f"ALTER TABLE books ADD COLUMN {name} {sqltype}")
 
     @contextmanager
     def _connect(self):
@@ -52,6 +59,9 @@ class Catalog:
             runtime_min=r["runtime_min"] or 0, purchase_date=r["purchase_date"] or "",
             fmt=r["fmt"] or "",
             cover_url=(r["cover_url"] if "cover_url" in r.keys() else "") or "",
+            pdf_url=(r["pdf_url"] if "pdf_url" in r.keys() else "") or "",
+            read_status=(r["read_status"] if "read_status" in r.keys() else "") or "",
+            local_path=(r["local_path"] if "local_path" in r.keys() else "") or "",
             downloaded=bool(r["downloaded"]), converted=bool(r["converted"]),
         )
 
@@ -61,17 +71,31 @@ class Catalog:
                 conn.execute(
                     """INSERT INTO books
                        (asin,title,author,narrator,series,runtime_min,
-                        purchase_date,fmt,cover_url)
-                       VALUES (?,?,?,?,?,?,?,?,?)
+                        purchase_date,fmt,cover_url,pdf_url)
+                       VALUES (?,?,?,?,?,?,?,?,?,?)
                        ON CONFLICT(asin) DO UPDATE SET
                          title=excluded.title, author=excluded.author,
                          narrator=excluded.narrator, series=excluded.series,
                          runtime_min=excluded.runtime_min,
                          purchase_date=excluded.purchase_date,
-                         cover_url=excluded.cover_url""",
+                         cover_url=excluded.cover_url, pdf_url=excluded.pdf_url""",
                     (b.asin, b.title, b.author, b.narrator, b.series,
-                     b.runtime_min, b.purchase_date, b.fmt, b.cover_url),
+                     b.runtime_min, b.purchase_date, b.fmt, b.cover_url, b.pdf_url),
                 )
+
+    def add(self, book: Book) -> None:
+        """Insert/replace a single book including local_path (used by import)."""
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT OR REPLACE INTO books
+                   (asin,title,author,narrator,series,runtime_min,purchase_date,
+                    fmt,cover_url,pdf_url,read_status,local_path,downloaded,converted)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (book.asin, book.title, book.author, book.narrator, book.series,
+                 book.runtime_min, book.purchase_date, book.fmt, book.cover_url,
+                 book.pdf_url, book.read_status, book.local_path,
+                 int(book.downloaded), int(book.converted)),
+            )
 
     def all(self) -> list[Book]:
         with self._connect() as conn:
@@ -110,3 +134,8 @@ class Catalog:
         vals.append(asin)
         with self._connect() as conn:
             conn.execute(f"UPDATE books SET {', '.join(sets)} WHERE asin=?", vals)
+
+    def set_read_status(self, asin: str, status: str) -> None:
+        with self._connect() as conn:
+            conn.execute("UPDATE books SET read_status=? WHERE asin=?",
+                         (status, asin))

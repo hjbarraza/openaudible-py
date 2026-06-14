@@ -23,9 +23,14 @@ An open-source Python take on OpenAudible.
 - **One-key get** — `Enter` or `g` downloads + strips DRM + converts to M4B in the
   background, with **live progress** (`⏬ downloading 45% · 96/212 MB` → `⚙ converting 62%`).
 - **Background job queue** — up to 2 at once, the rest queue; `c` cancels a queued
-  job instantly or terminates a running one.
-- **Playback** — `p` opens the converted book in your player.
+  job instantly or terminates a running one. Interrupted downloads resume.
+- **Built-in player** — `p` plays in-app (`space` pause, `[`/`]` chapter, `-`/`=` speed, `f`/`b` ±30s).
+- **Read status** — `m` cycles unread → reading → finished → dnf.
+- **Companion PDFs** downloaded alongside the M4B; **notes/bookmarks** via `n`.
 - **Auto login** — opens a browser to sign in on first launch; no copy/paste.
+
+It also handles **chapters + cover art** (preserved losslessly), **import** of your
+own local audiobooks, and **export** of the catalog to CSV/JSON.
 
 | Key | Action |
 |-----|--------|
@@ -74,9 +79,16 @@ The same engine is scriptable from the command line:
     openaudible sync             # pull your library into the local catalog
     openaudible ls [query]       # list / search books
     openaudible info <ASIN>      # show one book's details
-    openaudible get <ASIN>       # download + de-DRM + convert to M4B
+    openaudible get <ASIN>       # download + de-DRM + convert to M4B (+ PDF)
     openaudible play <ASIN>      # open in your OS player
+    openaudible read <ASIN> finished   # set read status
+    openaudible import <path>    # import local audiobooks (file or directory)
+    openaudible export lib.json  # export catalog to .json or .csv
+    openaudible annotations <ASIN>     # show your bookmarks / notes
     openaudible status           # catalog counts
+
+Set `OPENAUDIBLE_NO_PDF=1` to skip companion PDFs, or `OPENAUDIBLE_DELETE_AAX=1`
+to delete the encrypted source after a successful convert.
 
 ## Where files go
 

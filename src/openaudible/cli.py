@@ -105,9 +105,10 @@ def ls(query: str = typer.Argument("")):
     cfg = _cfg()
     cat = Catalog(cfg.db_file)
     books = cat.search(query) if query else cat.all()
-    table = Table("ASIN", "Title", "Author", "✓")
+    table = Table("ASIN", "Title", "Author", "✓", "Read")
     for b in books:
-        table.add_row(b.asin, b.title, b.author, "●" if b.converted else "")
+        table.add_row(b.asin, b.title, b.author,
+                      "●" if b.converted else "", b.read_status or "")
     console.print(table)
 
 
@@ -141,23 +142,66 @@ def status():
     cfg = _cfg()
     books = Catalog(cfg.db_file).all()
     done = sum(1 for b in books if b.converted)
-    console.print(f"Library: {len(books)} books, {done} converted.")
+    finished = sum(1 for b in books if b.read_status == "finished")
+    console.print(f"Library: {len(books)} books, {done} converted, "
+                  f"{finished} finished.")
 
 
 @app.command()
 def play(asin: str):
     """Play a converted book in your default OS player."""
     import subprocess, sys
-    from .jobs import output_path
+    from .jobs import book_file
     cfg = _cfg()
     b = Catalog(cfg.db_file).get(asin)
     if not b:
         console.print("[red]Not found.[/red]"); raise typer.Exit(1)
-    path = output_path(cfg, b)
+    path = book_file(cfg, b)
     if not path.exists():
         console.print("[red]Not converted yet. Run 'get' first.[/red]"); raise typer.Exit(1)
     opener = "open" if sys.platform == "darwin" else "xdg-open"
     subprocess.run([opener, str(path)])
+
+
+@app.command(name="import")
+def import_books(path: str, no_copy: bool = typer.Option(
+        False, "--no-copy", help="Reference files in place instead of copying.")):
+    """Import local audiobooks (file or directory) into the catalog."""
+    from .importer import import_path
+    cfg = _cfg()
+    added = import_path(cfg, path, copy=not no_copy)
+    for b in added:
+        console.print(f"[green]+[/green] {b.author} — {b.title}")
+    console.print(f"[green]Imported {len(added)} book(s).[/green]")
+
+
+@app.command()
+def export(out: str):
+    """Export the catalog to a .csv or .json file."""
+    from .exporter import export_catalog
+    cfg = _cfg()
+    written = export_catalog(Catalog(cfg.db_file).all(), out)
+    console.print(f"[green]Wrote[/green] {written}")
+
+
+@app.command()
+def read(asin: str, status: str):
+    """Set read status: unread | reading | finished | dnf (or any string)."""
+    cfg = _cfg()
+    cat = Catalog(cfg.db_file)
+    if not cat.get(asin):
+        console.print("[red]Not found.[/red]"); raise typer.Exit(1)
+    cat.set_read_status(asin, status)
+    console.print(f"[green]{asin}[/green] → {status}")
+
+
+@app.command()
+def annotations(asin: str):
+    """Show your bookmarks / notes for a book."""
+    from .client import get_annotations
+    cfg = _cfg()
+    data = get_annotations(_auth(cfg), asin)
+    console.print(data)
 
 
 if __name__ == "__main__":
