@@ -24,12 +24,27 @@ An open-source Python equivalent of OpenAudible.
     openaudible ls               # list books
     openaudible get <ASIN>       # download + de-DRM + convert to M4B
     openaudible play <ASIN>      # open in your OS player
-    openaudible-tui              # Textual browser
+    openaudible-tui              # full-screen library browser
 
 Converted books go to `~/Documents/audiobooks/<Author>/<Title>.m4b`
 (override with `OPENAUDIBLE_BOOKS`). App state — login, catalog, and the
 encrypted source files — lives under `~/Library/Application Support/openaudible-py/`
 (override with `OPENAUDIBLE_HOME`).
+
+### TUI
+
+`openaudible-tui` is a full-screen library browser: searchable book list, a
+detail pane, live download/convert progress, and playback — all from the
+keyboard.
+
+| Key | Action |
+|-----|--------|
+| `/` | search (title / author / series) |
+| `g` | get — download + de-DRM + convert (runs in the background) |
+| `p` | play the converted book in your OS player |
+| `o` | open the book's folder |
+| `s` | sync library from Audible |
+| `r` | refresh · `esc` clear search · `q` quit |
 
 ### Login
 
