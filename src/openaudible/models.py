@@ -19,6 +19,7 @@ class Book:
     runtime_min: int = 0
     purchase_date: str = ""
     fmt: str = ""           # aax | aaxc | ""
+    cover_url: str = ""
     downloaded: bool = False
     converted: bool = False
     extra: dict = field(default_factory=dict)
@@ -33,6 +34,12 @@ class Book:
         if item.get("series"):
             series = item["series"][0].get("title", "")
 
+        images = item.get("product_images") or {}
+        cover_url = ""
+        if images:
+            largest = max(images, key=lambda k: int(k) if str(k).isdigit() else 0)
+            cover_url = images[largest]
+
         return cls(
             asin=item["asin"],
             title=item.get("title", ""),
@@ -41,6 +48,7 @@ class Book:
             series=series,
             runtime_min=int(item.get("runtime_length_min") or 0),
             purchase_date=item.get("purchase_date", "") or "",
+            cover_url=cover_url,
         )
 
     @property

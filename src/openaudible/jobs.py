@@ -16,6 +16,7 @@ def output_path(cfg: Config, book: Book) -> Path:
 
 def process_book(*, auth, cfg: Config, book: Book, force: bool = False,
                  on_progress: Optional[Callable[[str], None]] = None,
+                 on_download: Optional[Callable[[int, Optional[int]], None]] = None,
                  cancel_check: Optional[Callable[[], bool]] = None) -> Path:
     out = output_path(cfg, book)
     if out.exists() and not force:
@@ -23,7 +24,8 @@ def process_book(*, auth, cfg: Config, book: Book, force: bool = False,
     cfg.ensure_dirs()
 
     src, key, iv, _metadata = fetch_book(auth, book.asin, cfg.aax_dir,
-                                         cancel_check=cancel_check)
+                                         cancel_check=cancel_check,
+                                         on_download=on_download)
     # AAXC ships a per-file voucher (key/iv); AAX decrypts with account bytes.
     activation_bytes = None if (key and iv) else account_activation_bytes(auth)
 

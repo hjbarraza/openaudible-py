@@ -6,10 +6,11 @@ import threading
 from collections import deque
 from typing import Optional
 
+import httpx
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
 
@@ -54,12 +55,32 @@ def status_icon(book: Book) -> str:
     return "·"
 
 
-def convert_status(ffmpeg_line: str) -> str:
+def _time_to_secs(stamp: str) -> int:
+    parts = stamp.split(":")
+    try:
+        h, m, s = (int(p) for p in parts)
+        return h * 3600 + m * 60 + s
+    except ValueError:
+        return 0
+
+
+def convert_status(ffmpeg_line: str, total_min: int = 0) -> str:
     i = ffmpeg_line.find("time=")
     if i == -1:
         return "⚙ converting"
     stamp = ffmpeg_line[i + 5:].split(" ")[0].split(".")[0]
-    return f"⚙ {stamp}"
+    if total_min:
+        pct = min(99, int(_time_to_secs(stamp) * 100 / (total_min * 60)))
+        return f"⚙ converting {pct}% · {stamp}"
+    return f"⚙ converting {stamp}"
+
+
+def download_status(written: int, total: Optional[int]) -> str:
+    mb = written / (1024 * 1024)
+    if total:
+        pct = int(written * 100 / total)
+        return f"⏬ downloading {pct}% · {mb:.0f}/{total / 1048576:.0f} MB"
+    return f"⏬ downloading {mb:.0f} MB"
 
 
 COLUMNS = [(" ", "status"), ("Title", "title"), ("Author", "author"),
@@ -111,7 +132,9 @@ class OpenAudibleApp(App):
     CSS = """
     #main { height: 1fr; }
     #library { width: 2fr; }
-    #detail { width: 1fr; border-left: solid $panel; padding: 0 1; }
+    #side { width: 1fr; border-left: solid $panel; padding: 0 1; }
+    #cover { height: auto; max-height: 16; content-align: center top; }
+    #detail { height: auto; }
     #search { dock: top; display: none; }
     #search.visible { display: block; }
     #log { height: 8; border-top: solid $panel; padding: 0 1; }
@@ -147,6 +170,7 @@ class OpenAudibleApp(App):
         self._cancel: dict[str, threading.Event] = {}  # asin -> cancel flag
         self._waiting: deque[str] = deque()          # waiting asins
         self._busy: set[str] = set()            # asins in a worker
+        self._cover_for: Optional[str] = None   # asin whose cover is shown
 
     # ---- layout ----
     def compose(self) -> ComposeResult:
@@ -154,7 +178,9 @@ class OpenAudibleApp(App):
         yield Input(placeholder="Search title / author / series…", id="search")
         with Horizontal(id="main"):
             yield DataTable(id="library")
-            yield Static(id="detail")
+            with Vertical(id="side"):
+                yield Static(id="cover")
+                yield Static(id="detail")
         yield RichLog(id="log", markup=True)
         yield Footer()
 
@@ -201,6 +227,7 @@ class OpenAudibleApp(App):
     def update_detail(self) -> None:
         detail = self.query_one("#detail", Static)
         book = self.selected_book()
+        self.update_cover(book)
         if not book:
             detail.update("[dim]No selection[/dim]")
             return
@@ -220,6 +247,54 @@ class OpenAudibleApp(App):
         if book.converted and out.exists():
             lines += ["", f"[dim]{out}[/dim]"]
         detail.update("\n".join(lines))
+
+    # ---- cover art ----
+    def _cover_path(self, asin: str):
+        return self.cfg.covers_dir / f"{asin}.jpg"
+
+    def _pixels(self, path):
+        try:
+            from PIL import Image
+            from rich_pixels import Pixels
+            with Image.open(path) as img:
+                img = img.convert("RGB")
+                img.thumbnail((24, 24))
+                return Pixels.from_image(img)
+        except Exception:
+            return ""
+
+    def update_cover(self, book: Optional[Book]) -> None:
+        cover = self.query_one("#cover", Static)
+        if not book or not book.cover_url:
+            cover.update("")
+            self._cover_for = None
+            return
+        if self._cover_for == book.asin:
+            return  # already showing this one
+        self._cover_for = book.asin
+        path = self._cover_path(book.asin)
+        if path.exists():
+            cover.update(self._pixels(path))
+        else:
+            cover.update("[dim]loading cover…[/dim]")
+            self.load_cover(book.asin, book.cover_url)
+
+    @work(thread=True, group="cover", exclusive=True)
+    def load_cover(self, asin: str, url: str) -> None:
+        path = self._cover_path(asin)
+        if not path.exists():
+            try:
+                resp = httpx.get(url, timeout=15, follow_redirects=True)
+                resp.raise_for_status()
+                self.cfg.covers_dir.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(resp.content)
+            except Exception:
+                return
+        self.call_from_thread(self._cover_loaded, asin, path)
+
+    def _cover_loaded(self, asin: str, path) -> None:
+        if self.selected_asin() == asin:  # selection may have moved on
+            self.query_one("#cover", Static).update(self._pixels(path))
 
     def log_line(self, text: str) -> None:
         self.query_one("#log", RichLog).write(text)
@@ -425,13 +500,33 @@ class OpenAudibleApp(App):
         book = self.catalog.get(asin)
         auth = self.get_auth()
         event = self._cancel.get(asin)
+        last = {"d": -1, "c": -1}  # throttle UI updates to whole-percent changes
+        self.call_from_thread(self.log_line, f"[yellow]Downloading[/yellow] {book.title}")
         self.call_from_thread(self.set_status, asin, "⏬ downloading")
 
-        def progress(line: str) -> None:
-            self.call_from_thread(self.set_status, asin, convert_status(line))
+        def on_download(written: int, total) -> None:
+            pct = int(written * 100 / total) if total else written // (1 << 21)
+            if pct == last["d"]:
+                return
+            last["d"] = pct
+            self.call_from_thread(self.set_status, asin,
+                                  download_status(written, total))
+
+        def on_convert(line: str) -> None:
+            i = line.find("time=")
+            if i == -1:
+                return
+            secs = _time_to_secs(line[i + 5:].split(" ")[0].split(".")[0])
+            pct = int(secs * 100 / (book.runtime_min * 60)) if book.runtime_min else secs
+            if pct == last["c"]:
+                return
+            last["c"] = pct
+            self.call_from_thread(self.set_status, asin,
+                                  convert_status(line, book.runtime_min))
 
         try:
-            process_book(auth=auth, cfg=self.cfg, book=book, on_progress=progress,
+            process_book(auth=auth, cfg=self.cfg, book=book,
+                         on_progress=on_convert, on_download=on_download,
                          cancel_check=(event.is_set if event else None))
         except ConversionError as exc:
             if "canceled" in str(exc):

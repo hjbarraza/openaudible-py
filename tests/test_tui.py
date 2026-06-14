@@ -3,7 +3,7 @@ from openaudible.config import Config
 from openaudible.catalog import Catalog
 from openaudible.models import Book
 from openaudible.tui.app import (
-    OpenAudibleApp, fmt_runtime, status_icon, convert_status,
+    OpenAudibleApp, fmt_runtime, status_icon, convert_status, download_status,
 )
 
 
@@ -20,8 +20,21 @@ def test_status_icon():
 
 
 def test_convert_status_parses_ffmpeg_time():
-    assert convert_status("frame= 1 time=01:23:45.67 bitrate=...") == "⚙ 01:23:45"
+    assert convert_status("frame= 1 time=01:23:45.67 bitrate=...") \
+        == "⚙ converting 01:23:45"
     assert convert_status("no time here") == "⚙ converting"
+
+
+def test_convert_status_with_percent():
+    # 1h into a 2h book -> 50%
+    assert convert_status("time=01:00:00.0", total_min=120) \
+        == "⚙ converting 50% · 01:00:00"
+
+
+def test_download_status():
+    assert download_status(50 * 1048576, 100 * 1048576) \
+        == "⏬ downloading 50% · 50/100 MB"
+    assert download_status(10 * 1048576, None) == "⏬ downloading 10 MB"
 
 
 def _seed(tmp_path, books):

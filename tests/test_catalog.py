@@ -50,3 +50,9 @@ def test_catalog_usable_across_threads(tmp_path):
             errors.append(repr(e))
     t = threading.Thread(target=worker); t.start(); t.join()
     assert errors == []
+
+def test_cover_url_round_trips(tmp_path):
+    cat = Catalog(tmp_path / "library.db")
+    b = Book(asin="1", title="Alpha", cover_url="http://x/c.jpg")
+    cat.sync([b])
+    assert cat.get("1").cover_url == "http://x/c.jpg"

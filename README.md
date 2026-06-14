@@ -33,9 +33,9 @@ encrypted source files — lives under `~/Library/Application Support/openaudibl
 
 ### TUI
 
-`openaudible-tui` is a full-screen library browser: searchable book list, a
-detail pane, live download/convert progress, and playback — all from the
-keyboard.
+`openaudible-tui` is a full-screen library browser: searchable, sortable book
+list, a detail pane with **cover art** and metadata, **live download/convert
+progress** (percent + MB), and playback — all from the keyboard.
 
 | Key | Action |
 |-----|--------|
@@ -45,6 +45,7 @@ keyboard.
 | `o` | open the book's folder |
 | `c` | cancel this book's job |
 | `a` | get ALL un-converted books in view |
+| `t` | sort: author → title → recently bought |
 | `s` | sync library from Audible |
 | `/` | search (title / author / series) |
 | `j`/`k`, arrows, PgUp/PgDn, Home/End, `Ctrl+U`/`Ctrl+D` | move |

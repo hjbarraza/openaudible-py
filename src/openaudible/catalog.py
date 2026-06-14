@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS books (
     runtime_min INTEGER,
     purchase_date TEXT,
     fmt TEXT,
+    cover_url TEXT,
     downloaded INTEGER DEFAULT 0,
     converted INTEGER DEFAULT 0
 );
@@ -30,6 +31,9 @@ class Catalog:
         self.db_file.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(books)")}
+            if "cover_url" not in cols:  # migrate older databases
+                conn.execute("ALTER TABLE books ADD COLUMN cover_url TEXT")
 
     @contextmanager
     def _connect(self):
@@ -46,8 +50,9 @@ class Catalog:
             asin=r["asin"], title=r["title"], author=r["author"] or "Unknown",
             narrator=r["narrator"] or "", series=r["series"] or "",
             runtime_min=r["runtime_min"] or 0, purchase_date=r["purchase_date"] or "",
-            fmt=r["fmt"] or "", downloaded=bool(r["downloaded"]),
-            converted=bool(r["converted"]),
+            fmt=r["fmt"] or "",
+            cover_url=(r["cover_url"] if "cover_url" in r.keys() else "") or "",
+            downloaded=bool(r["downloaded"]), converted=bool(r["converted"]),
         )
 
     def sync(self, books: Iterable[Book]) -> None:
@@ -55,15 +60,17 @@ class Catalog:
             for b in books:
                 conn.execute(
                     """INSERT INTO books
-                       (asin,title,author,narrator,series,runtime_min,purchase_date,fmt)
-                       VALUES (?,?,?,?,?,?,?,?)
+                       (asin,title,author,narrator,series,runtime_min,
+                        purchase_date,fmt,cover_url)
+                       VALUES (?,?,?,?,?,?,?,?,?)
                        ON CONFLICT(asin) DO UPDATE SET
                          title=excluded.title, author=excluded.author,
                          narrator=excluded.narrator, series=excluded.series,
                          runtime_min=excluded.runtime_min,
-                         purchase_date=excluded.purchase_date""",
+                         purchase_date=excluded.purchase_date,
+                         cover_url=excluded.cover_url""",
                     (b.asin, b.title, b.author, b.narrator, b.series,
-                     b.runtime_min, b.purchase_date, b.fmt),
+                     b.runtime_min, b.purchase_date, b.fmt, b.cover_url),
                 )
 
     def all(self) -> list[Book]:
