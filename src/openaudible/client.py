@@ -9,7 +9,7 @@ from .models import Book
 
 LIBRARY_RESPONSE_GROUPS = (
     "product_desc, product_attrs, contributors, series, "
-    "product_extended_attrs, media, pdf_url"
+    "product_extended_attrs, media, pdf_url, rating, category_ladders"
 )
 
 

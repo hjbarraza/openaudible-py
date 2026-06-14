@@ -86,7 +86,8 @@ def download_status(written: int, total: Optional[int]) -> str:
 
 
 COLUMNS = [(" ", "status"), ("Title", "title"), ("Author", "author"),
-           ("Series", "series"), ("Time", "time")]
+           ("Narrator", "narrator"), ("Genre", "genre"), ("★", "rating"),
+           ("Time", "time")]
 
 HELP_TEXT = """[b]openaudible — keyboard controls[/b]
 
@@ -174,15 +175,14 @@ class EditScreen(ModalScreen):
 class OpenAudibleApp(App):
     TITLE = "openaudible"
     CSS = """
-    #main { height: 1fr; }
-    #library { width: 3fr; }
-    #side { width: 2fr; border-left: solid $panel; padding: 0 1; }
-    /* fix height, width auto → cover scales to fit the pane and keeps aspect */
-    #cover { height: 22; width: auto; max-width: 100%; content-align: center top; }
-    #detail { height: auto; }
+    #libstatus { height: 1; color: $text-muted; padding: 0 1; }
+    #info { height: 16; border-bottom: solid $panel; }
+    #cover { width: auto; height: 14; max-width: 40; content-align: center top; }
+    #detail { width: 1fr; padding: 0 2; }
+    #library { height: 1fr; }
     #search { dock: top; display: none; }
     #search.visible { display: block; }
-    #log { height: 8; border-top: solid $panel; padding: 0 1; }
+    #log { height: 6; border-top: solid $panel; padding: 0 1; }
     """
     BINDINGS = [
         Binding("enter", "primary", "Get/Play"),
@@ -239,11 +239,11 @@ class OpenAudibleApp(App):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield Input(placeholder="Search title / author / series…", id="search")
-        with Horizontal(id="main"):
-            yield DataTable(id="library")
-            with Vertical(id="side"):
-                yield CoverImage(id="cover")
-                yield Static(id="detail")
+        yield Static(id="libstatus")
+        with Horizontal(id="info"):       # book info panel on top
+            yield CoverImage(id="cover")
+            yield Static(id="detail")
+        yield DataTable(id="library")     # library list below
         yield RichLog(id="log", markup=True)
         yield Footer()
 
@@ -271,10 +271,22 @@ class OpenAudibleApp(App):
         table.clear()
         for b in self.current_books():
             table.add_row(self._status.get(b.asin) or status_icon(b),
-                          trunc(b.title, 48), trunc(b.author, 24),
-                          trunc(b.series, 22), fmt_runtime(b.runtime_min),
+                          trunc(b.title, 42), trunc(b.author, 22),
+                          trunc(b.narrator, 18), trunc(b.genre, 16),
+                          b.rating or "", fmt_runtime(b.runtime_min),
                           key=b.asin)
         self.update_detail()
+        self.update_libstatus()
+
+    def update_libstatus(self) -> None:
+        books = self.catalog.all()
+        conv = sum(1 for b in books if b.converted)
+        fin = sum(1 for b in books if b.read_status == "finished")
+        parts = [f"{len(books)} books", f"{conv} converted", f"{fin} finished"]
+        active = len(self._busy) + len(self._waiting)
+        if active:
+            parts.append(f"{active} in queue")
+        self.query_one("#libstatus", Static).update("  ·  ".join(parts))
 
     def selected_asin(self) -> Optional[str]:
         table = self.query_one("#library", DataTable)
@@ -298,22 +310,20 @@ class OpenAudibleApp(App):
             return
         state = ("[green]converted[/green]" if book.converted
                  else "downloaded" if book.downloaded else "not downloaded")
+        rating = f"★ {book.rating}" if book.rating else "—"
         lines = [
-            f"[b]{book.title}[/b]", "",
-            f"[cyan]Author[/cyan]    {book.author}",
-            f"[cyan]Narrator[/cyan]  {book.narrator or '—'}",
-            f"[cyan]Series[/cyan]    {book.series or '—'}",
-            f"[cyan]Length[/cyan]    {fmt_runtime(book.runtime_min) or '—'}",
-            f"[cyan]ASIN[/cyan]      {book.asin}",
-            "",
-            f"[cyan]Status[/cyan]    {self._status.get(book.asin) or state}",
-            f"[cyan]Read[/cyan]      {book.read_status or '—'}",
+            f"[b]{book.title}[/b]   [yellow]{rating}[/yellow]",
+            f"[cyan]Author[/cyan]    {book.author}"
+            f"    [cyan]Narrator[/cyan] {book.narrator or '—'}",
+            f"[cyan]Series[/cyan]    {book.series or '—'}"
+            f"    [cyan]Genre[/cyan] {book.genre or '—'}",
+            f"[cyan]Length[/cyan]    {fmt_runtime(book.runtime_min) or '—'}"
+            f"    [cyan]Status[/cyan] {self._status.get(book.asin) or state}"
+            f"    [cyan]Read[/cyan] {book.read_status or '—'}"
+            + ("    [cyan]PDF[/cyan] ✓" if book.pdf_url else ""),
         ]
-        if book.pdf_url:
-            lines.append("[cyan]PDF[/cyan]       available")
-        out = book_file(self.cfg, book)
-        if book.converted and out.exists():
-            lines += ["", f"[dim]{out}[/dim]"]
+        if book.description:
+            lines += ["", f"[dim]{trunc(book.description, 360)}[/dim]"]
         detail.update("\n".join(lines))
 
     # ---- cover art ----
@@ -682,6 +692,7 @@ class OpenAudibleApp(App):
         self._busy.discard(asin)
         self._cancel.pop(asin, None)
         self._pump()
+        self.update_libstatus()
 
     def action_get(self) -> None:
         asin = self.selected_asin()
@@ -701,6 +712,7 @@ class OpenAudibleApp(App):
         if self._enqueue(asin):
             self.log_line(f"[yellow]Queued[/yellow] {book.title}")
             self._pump()
+            self.update_libstatus()
 
     def action_get_all(self) -> None:
         if self.get_auth() is None:

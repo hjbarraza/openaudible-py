@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS books (
     runtime_min INTEGER,
     purchase_date TEXT,
     fmt TEXT,
+    genre TEXT,
+    rating TEXT,
+    description TEXT,
     cover_url TEXT,
     pdf_url TEXT,
     read_status TEXT,
@@ -25,7 +28,8 @@ CREATE TABLE IF NOT EXISTS books (
 """
 
 _MIGRATIONS = {"cover_url": "TEXT", "pdf_url": "TEXT", "read_status": "TEXT",
-               "local_path": "TEXT"}
+               "local_path": "TEXT", "genre": "TEXT", "rating": "TEXT",
+               "description": "TEXT"}
 
 
 class Catalog:
@@ -58,6 +62,9 @@ class Catalog:
             narrator=r["narrator"] or "", series=r["series"] or "",
             runtime_min=r["runtime_min"] or 0, purchase_date=r["purchase_date"] or "",
             fmt=r["fmt"] or "",
+            genre=(r["genre"] if "genre" in r.keys() else "") or "",
+            rating=(r["rating"] if "rating" in r.keys() else "") or "",
+            description=(r["description"] if "description" in r.keys() else "") or "",
             cover_url=(r["cover_url"] if "cover_url" in r.keys() else "") or "",
             pdf_url=(r["pdf_url"] if "pdf_url" in r.keys() else "") or "",
             read_status=(r["read_status"] if "read_status" in r.keys() else "") or "",
@@ -71,16 +78,19 @@ class Catalog:
                 conn.execute(
                     """INSERT INTO books
                        (asin,title,author,narrator,series,runtime_min,
-                        purchase_date,fmt,cover_url,pdf_url)
-                       VALUES (?,?,?,?,?,?,?,?,?,?)
+                        purchase_date,fmt,cover_url,pdf_url,genre,rating,description)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                        ON CONFLICT(asin) DO UPDATE SET
                          title=excluded.title, author=excluded.author,
                          narrator=excluded.narrator, series=excluded.series,
                          runtime_min=excluded.runtime_min,
                          purchase_date=excluded.purchase_date,
-                         cover_url=excluded.cover_url, pdf_url=excluded.pdf_url""",
+                         cover_url=excluded.cover_url, pdf_url=excluded.pdf_url,
+                         genre=excluded.genre, rating=excluded.rating,
+                         description=excluded.description""",
                     (b.asin, b.title, b.author, b.narrator, b.series,
-                     b.runtime_min, b.purchase_date, b.fmt, b.cover_url, b.pdf_url),
+                     b.runtime_min, b.purchase_date, b.fmt, b.cover_url, b.pdf_url,
+                     b.genre, b.rating, b.description),
                 )
 
     def add(self, book: Book) -> None:

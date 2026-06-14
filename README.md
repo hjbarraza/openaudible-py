@@ -17,8 +17,12 @@ An open-source Python take on OpenAudible.
 
 `openaudible-tui` is the main way to use it — a full-screen library browser:
 
-- **Searchable, sortable list** of your whole library (by author, title, or recently bought).
-- **Detail pane with cover art** — crisp in terminals that support graphics
+- **Layout** — a library-status bar up top (`207 books · 6 converted · 5 finished`),
+  a **book-info panel** (cover, author/narrator/series/genre/rating, description),
+  and the **full-width list** below.
+- **Searchable, sortable list** (author / title / recently bought) with columns for
+  title, author, narrator, genre, rating, and length.
+- **Cover art** — crisp in terminals that support graphics
   (Kitty / Ghostty / WezTerm / iTerm2 / Sixel), half-block fallback elsewhere.
 - **One-key get** — `Enter` or `g` downloads + strips DRM + converts to M4B in the
   background, with **live progress** (`⏬ downloading 45% · 96/212 MB` → `⚙ converting 62%`).

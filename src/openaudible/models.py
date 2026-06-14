@@ -19,6 +19,9 @@ class Book:
     runtime_min: int = 0
     purchase_date: str = ""
     fmt: str = ""           # aax | aaxc | ""
+    genre: str = ""
+    rating: str = ""
+    description: str = ""
     cover_url: str = ""
     pdf_url: str = ""
     read_status: str = ""   # "" | unread | reading | finished | dnf
@@ -43,6 +46,14 @@ class Book:
             largest = max(images, key=lambda k: int(k) if str(k).isdigit() else 0)
             cover_url = images[largest]
 
+        rating = str((item.get("rating") or {}).get("overall_distribution", {})
+                     .get("display_average_rating", "") or "")
+        ladders = item.get("category_ladders") or []
+        ladder = ladders[0].get("ladder") if ladders else None
+        genre = ladder[0].get("name", "") if ladder else ""
+        description = re.sub(r"<[^>]+>", "",
+                             item.get("merchandising_summary") or "").strip()
+
         return cls(
             asin=item["asin"],
             title=item.get("title", ""),
@@ -51,6 +62,9 @@ class Book:
             series=series,
             runtime_min=int(item.get("runtime_length_min") or 0),
             purchase_date=item.get("purchase_date", "") or "",
+            genre=genre,
+            rating=rating,
+            description=description,
             cover_url=cover_url,
             pdf_url=item.get("pdf_url", "") or "",
         )
