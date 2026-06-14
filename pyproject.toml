@@ -22,6 +22,7 @@ dev = ["pytest>=8", "pytest-asyncio>=0.23"]
 
 [project.scripts]
 openaudible = "openaudible.cli:app"
+openaudible-tui = "openaudible.tui.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
