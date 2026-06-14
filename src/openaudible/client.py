@@ -40,13 +40,17 @@ def fetch_library(auth) -> list[Book]:
 async def _get_download_info(auth, asin: str, quality: str = "high"):
     """Returns (url, codec_family, key, iv, metadata)."""
     async with audible.AsyncClient(auth=auth) as client:
-        lib = await Library.from_api(client, response_groups="media, relationships")
+        # from_api returns only one page (~50 items); paginate so books past the
+        # first page are found.
+        lib = await Library.from_api_full_sync(
+            client, response_groups="media, relationships")
         item = next((i for i in lib if i.asin == asin), None)
         if item is None:
             raise ValueError(f"asin not in library: {asin}")
         url, codec, lr = await item.get_aaxc_url(quality)
         key, iv = voucher_from_license(lr)
-        metadata = await item.get_content_metadata(quality)
+        # Flat chapters avoid dropping nested sub-chapters in tree responses.
+        metadata = await item.get_content_metadata(quality, chapter_type="Flat")
         return str(url), "aaxc", key, iv, metadata
 
 
