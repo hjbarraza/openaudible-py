@@ -67,9 +67,9 @@ picks a compatible Python automatically.
     ./setup.sh        # installs deps, builds the venv, links commands onto PATH
     openaudible-tui
 
-`setup.sh` is idempotent — safe to re-run after pulling updates. It needs
-[Homebrew](https://brew.sh) on macOS (to install `ffmpeg`/`mpv`); on Linux it
-tells you the package to install.
+`setup.sh` is idempotent — safe to re-run after pulling updates. On macOS it
+installs [Homebrew](https://brew.sh) (if missing), `ffmpeg`, `mpv`, and a
+compatible Python automatically; on Linux it tells you which packages to install.
 
 <details><summary>Manual install</summary>
 
