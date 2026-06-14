@@ -30,6 +30,21 @@ def load(auth_file: Path, password: Optional[str] = None):
     return audible.Authenticator.from_file(auth_file)
 
 
+def login_browser(marketplace: str = "us"):
+    """One-shot login: opens a browser, signs in, and auto-captures the result.
+
+    Returns a registered Authenticator. Raises ImportError if Playwright (the
+    browser automation backend) is not installed, so the caller can fall back to
+    the manual paste flow.
+    """
+    from audible.login import playwright_external_login_url_callback
+
+    return audible.Authenticator.from_login_external(
+        locale=marketplace,
+        login_url_callback=playwright_external_login_url_callback,
+    )
+
+
 def begin_login(marketplace: str = "us") -> tuple[str, dict]:
     """Step 1 of a promptless browser login.
 

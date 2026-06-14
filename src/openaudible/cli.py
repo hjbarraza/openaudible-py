@@ -28,36 +28,55 @@ def _auth(cfg: Config):
 @app.command()
 def login(
     marketplace: str = "us",
+    manual: bool = typer.Option(
+        False, "--manual", help="Use the copy/paste flow instead of the browser."),
     url: str = typer.Option(
-        "", help="Paste the post-login URL (in quotes) to finish the login."),
+        "", help="Paste the post-login URL (in quotes) to finish a --manual login."),
 ):
-    """Audible login. Run once to get the URL, then again with --url to finish."""
+    """Audible login. By default opens a browser and captures the result for you."""
     cfg = _cfg()
     cfg.ensure_dirs()
     pending = cfg.base_dir / ".login_pending.json"
 
-    if not url:
-        oauth_url, state = auth_mod.begin_login(marketplace)
-        pending.write_text(json.dumps(state))
-        console.print(
-            "[bold]1.[/bold] Open this URL and sign in. You'll land on a "
-            "'page not found' — that's expected:\n")
-        print(oauth_url)  # plain print: no wrapping/markup, copies clean
-        console.print(
-            "\n[bold]2.[/bold] Copy the full URL from your browser's address bar, "
-            "then run (keep the quotes):\n")
-        console.print(f'   openaudible login --marketplace {marketplace} '
-                      '--url "<PASTE_URL_HERE>"')
+    # Finish a manual login.
+    if url:
+        if not pending.exists():
+            console.print("[red]No pending login. Run 'openaudible login --manual' "
+                          "first.[/red]")
+            raise typer.Exit(1)
+        state = json.loads(pending.read_text())
+        authenticator = auth_mod.complete_login(url, state)
+        auth_mod.save(authenticator, cfg.auth_file)
+        pending.unlink(missing_ok=True)
+        console.print("[green]Logged in.[/green]")
         return
 
-    if not pending.exists():
-        console.print("[red]No pending login. Run 'openaudible login' first.[/red]")
-        raise typer.Exit(1)
-    state = json.loads(pending.read_text())
-    authenticator = auth_mod.complete_login(url, state)
-    auth_mod.save(authenticator, cfg.auth_file)
-    pending.unlink(missing_ok=True)
-    console.print("[green]Logged in.[/green]")
+    # Default: one-shot browser login.
+    if not manual:
+        console.print("Opening a browser to sign in to Audible…")
+        try:
+            authenticator = auth_mod.login_browser(marketplace)
+        except ImportError:
+            console.print("[yellow]Playwright not available — falling back to the "
+                          "copy/paste flow.[/yellow]")
+            manual = True
+        else:
+            auth_mod.save(authenticator, cfg.auth_file)
+            console.print("[green]Logged in.[/green]")
+            return
+
+    # Manual copy/paste flow (fallback or --manual).
+    oauth_url, state = auth_mod.begin_login(marketplace)
+    pending.write_text(json.dumps(state))
+    console.print(
+        "[bold]1.[/bold] Open this URL and sign in. You'll land on a "
+        "'page not found' — that's expected:\n")
+    print(oauth_url)  # plain print: no wrapping/markup, copies clean
+    console.print(
+        "\n[bold]2.[/bold] Copy the full URL from your browser's address bar, "
+        "then run (keep the quotes):\n")
+    console.print(f'   openaudible login --manual --marketplace {marketplace} '
+                  '--url "<PASTE_URL_HERE>"')
 
 
 @app.command()

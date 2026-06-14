@@ -19,6 +19,21 @@ def test_exists(tmp_path):
     p.write_text("{}")
     assert auth.exists(p)
 
+def test_login_browser_passes_playwright_callback(monkeypatch):
+    from audible.login import playwright_external_login_url_callback
+    captured = {}
+    class FakeAuthenticator:
+        @classmethod
+        def from_login_external(cls, locale, login_url_callback):
+            captured["locale"] = locale
+            captured["cb"] = login_url_callback
+            return "AUTHED"
+    monkeypatch.setattr(auth.audible, "Authenticator", FakeAuthenticator)
+    result = auth.login_browser("uk")
+    assert result == "AUTHED"
+    assert captured["locale"] == "uk"
+    assert captured["cb"] is playwright_external_login_url_callback
+
 def test_begin_login_builds_url_and_state():
     url, state = auth.begin_login("us")
     assert url.startswith("https://www.amazon.com/ap/signin")

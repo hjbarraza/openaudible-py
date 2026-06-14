@@ -22,3 +22,21 @@ def test_status_reports_counts(tmp_path, monkeypatch):
     result = runner.invoke(app, ["status"])
     assert result.exit_code == 0
     assert "1" in result.stdout
+
+def test_login_manual_prints_url_and_saves_pending(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAUDIBLE_HOME", str(tmp_path))
+    result = runner.invoke(app, ["login", "--manual"])
+    assert result.exit_code == 0
+    assert "amazon.com/ap/signin" in result.stdout
+    assert (tmp_path / ".login_pending.json").exists()
+
+def test_login_browser_failure_falls_back_to_manual(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAUDIBLE_HOME", str(tmp_path))
+    import openaudible.cli as cli_mod
+    def boom(marketplace):
+        raise ImportError("no playwright")
+    monkeypatch.setattr(cli_mod.auth_mod, "login_browser", boom)
+    result = runner.invoke(app, ["login"])
+    assert result.exit_code == 0
+    assert "copy/paste" in result.stdout.lower()
+    assert (tmp_path / ".login_pending.json").exists()

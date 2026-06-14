@@ -15,10 +15,11 @@ An open-source Python equivalent of OpenAudible.
 
     python3 -m venv .venv && . .venv/bin/activate
     pip install -e .
+    playwright install webkit    # one-time, for browser login
 
 ## Use
 
-    openaudible login            # interactive Audible login
+    openaudible login            # opens a browser, signs you in automatically
     openaudible sync             # pull your library
     openaudible ls               # list books
     openaudible get <ASIN>       # download + de-DRM + convert to M4B
@@ -27,6 +28,17 @@ An open-source Python equivalent of OpenAudible.
 
 Files live under `~/Library/Application Support/openaudible-py/`
 (override with `OPENAUDIBLE_HOME`).
+
+### Login
+
+`openaudible login` opens a browser, you sign in to Amazon, and it captures the
+result automatically — no copy/paste. Add `--marketplace uk` (or `de`, `fr`,
+`ca`, `it`, `au`) for a non-US account.
+
+No browser available? Use the manual flow:
+
+    openaudible login --manual                 # prints a URL to open
+    openaudible login --manual --url "<URL>"   # paste the post-login URL back
 
 ## How de-DRM works
 
