@@ -1,0 +1,41 @@
+# openaudible-py
+
+Sync, de-DRM, convert, and play **your own** Audible library from the command line.
+An open-source Python equivalent of OpenAudible.
+
+> For personal use with your own purchased audiobooks and your own Audible
+> credentials. DRM removal runs locally on books you own.
+
+## Requirements
+
+- Python ≥ 3.11
+- `ffmpeg` and `mpv` on your PATH (`brew install ffmpeg mpv`)
+
+## Install
+
+    python3 -m venv .venv && . .venv/bin/activate
+    pip install -e .
+
+## Use
+
+    openaudible login            # interactive Audible login
+    openaudible sync             # pull your library
+    openaudible ls               # list books
+    openaudible get <ASIN>       # download + de-DRM + convert to M4B
+    openaudible play <ASIN>      # open in your OS player
+    openaudible-tui              # Textual browser
+
+Files live under `~/Library/Application Support/openaudible-py/`
+(override with `OPENAUDIBLE_HOME`).
+
+## How de-DRM works
+
+Authenticates with your Audible account, requests each book's content license,
+and uses the returned voucher (AAXC `key`/`iv`) or your account activation bytes
+(legacy AAX) to let `ffmpeg` strip DRM and remux to M4B — lossless, no re-encode.
+An optional offline rainbow-table fallback exists for local AAX files.
+
+## Develop
+
+    pip install -e ".[dev]"
+    pytest
