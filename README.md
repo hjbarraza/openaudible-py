@@ -52,20 +52,23 @@ own local audiobooks, and **export** of the catalog to CSV/JSON.
 
 ## Install
 
-    # 1. system tools — ffmpeg (convert) + mpv/libmpv (in-app playback)
-    brew install ffmpeg mpv          # macOS; on Linux use your package manager
-
-    # 2. get the code
     git clone https://github.com/hjbarraza/openaudible-py.git
     cd openaudible-py
+    ./setup.sh        # installs deps, builds the venv, links commands onto PATH
+    openaudible-tui
 
-    # 3. install
+`setup.sh` is idempotent — safe to re-run after pulling updates. It needs
+[Homebrew](https://brew.sh) on macOS (to install `ffmpeg`/`mpv`); on Linux it
+tells you the package to install.
+
+<details><summary>Manual install</summary>
+
+    brew install ffmpeg mpv          # macOS; Linux: apt install ffmpeg mpv libmpv2
     python3 -m venv .venv && . .venv/bin/activate
     pip install -e .
     playwright install webkit        # one-time, for browser login
-
-    # 4. run
     openaudible-tui
+</details>
 
 On first run it opens a browser to sign in to Audible, then press `s` to sync.
 Crisp cover art needs a graphics-capable terminal (Ghostty, Kitty, WezTerm,
