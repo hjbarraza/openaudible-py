@@ -71,6 +71,19 @@ On first run it opens a browser to sign in to Audible, then press `s` to sync.
 Crisp cover art needs a graphics-capable terminal (Ghostty, Kitty, WezTerm,
 iTerm2); other terminals fall back to block art.
 
+### Run from anywhere (no venv activation)
+
+Symlink the commands onto your PATH (the venv scripts are self-contained):
+
+    mkdir -p ~/.local/bin
+    ln -sf "$PWD/.venv/bin/openaudible" ~/.local/bin/openaudible
+    ln -sf "$PWD/.venv/bin/openaudible-tui" ~/.local/bin/openaudible-tui
+
+Now `openaudible` / `openaudible-tui` work from any directory. (Ensure
+`~/.local/bin` is on your `PATH`.) Or add a shell alias instead:
+
+    echo 'alias openaudible-tui="$HOME/Code/openaudible-py/.venv/bin/openaudible-tui"' >> ~/.zshrc
+
 ## Login
 
 Login opens a browser, you sign in to Amazon, and it captures the result
