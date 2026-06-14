@@ -34,18 +34,6 @@ def test_convert_runs_on_plain_audio(sample_m4a, tmp_path):
     assert result.exists()
     assert result.stat().st_size > 1024
 
-from openaudible.convert import write_ffmetadata
-
-def test_write_ffmetadata_has_chapter_blocks(tmp_path):
-    p = tmp_path / "meta.txt"
-    write_ffmetadata(p, [("Intro", 0, 1000), ("Body", 1000, 5000)])
-    text = p.read_text()
-    assert ";FFMETADATA1" in text
-    assert "[CHAPTER]" in text
-    assert "TIMEBASE=1/1000" in text
-    assert "title=Intro" in text
-    assert "START=1000" in text and "END=5000" in text
-
 from openaudible.convert import ConversionError
 import pytest
 

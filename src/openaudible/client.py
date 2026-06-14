@@ -82,7 +82,7 @@ async def _fetch_book(auth, asin: str, aax_dir: Path, quality: str = "high",
         item = next((i for i in lib if i.asin == asin), None)
         if item is None:
             raise ValueError(f"asin not in library: {asin}")
-        url, codec, lr = await item.get_aaxc_url(quality)
+        url, _codec, lr = await item.get_aaxc_url(quality)
         key, iv = voucher_from_license(lr)
         # Flat chapters avoid dropping nested sub-chapters in tree responses.
         metadata = await item.get_content_metadata(quality, chapter_type="Flat")

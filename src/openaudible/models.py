@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 _UNSAFE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 

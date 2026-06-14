@@ -1,5 +1,4 @@
 import sys, types
-from pathlib import Path
 
 def _install_fake_mpv(monkeypatch):
     mod = types.ModuleType("mpv")
