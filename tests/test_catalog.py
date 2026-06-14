@@ -36,3 +36,17 @@ def test_mark_flags(tmp_path):
     cat.mark("1", downloaded=True, converted=True, fmt="aaxc")
     b = cat.get("1")
     assert b.downloaded and b.converted and b.fmt == "aaxc"
+
+def test_catalog_usable_across_threads(tmp_path):
+    import threading
+    cat = Catalog(tmp_path / "library.db")
+    cat.sync([make("1", "Alpha")])
+    errors = []
+    def worker():
+        try:
+            cat.mark("1", converted=True)
+            assert cat.get("1").converted
+        except Exception as e:  # pragma: no cover - failure path
+            errors.append(repr(e))
+    t = threading.Thread(target=worker); t.start(); t.join()
+    assert errors == []
