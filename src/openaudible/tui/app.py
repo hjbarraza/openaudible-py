@@ -14,7 +14,26 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.theme import Theme
 from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
-from textual_image.widget import Image as CoverImage
+from textual_image.widget import HalfcellImage
+from textual_image.widget import Image as AutoImage
+
+
+def cover_widget_class():
+    """Pick the cover renderer.
+
+    Auto-detection can choose a graphics protocol that a terminal advertises but
+    can't actually draw (e.g. Warp), leaving a blank cover. For those terminals
+    (and when forced via OPENAUDIBLE_COVER=blocks) use the half-cell renderer,
+    which renders a pixelated-but-visible cover anywhere with truecolor.
+    """
+    import os
+    pref = os.environ.get("OPENAUDIBLE_COVER", "auto").lower()
+    if pref == "blocks":
+        return HalfcellImage
+    if pref == "auto" and os.environ.get("TERM_PROGRAM") in (
+            "WarpTerminal", "Apple_Terminal"):
+        return HalfcellImage
+    return AutoImage  # crisp where the terminal really supports graphics
 
 # Black / white / gray base with purple (primary) + mint (accent).
 OA_THEME = Theme(
@@ -260,7 +279,7 @@ class OpenAudibleApp(App):
         yield Input(placeholder="Search title / author / series…", id="search")
         yield Static(id="libstatus")
         with Horizontal(id="info"):       # book info panel on top
-            yield CoverImage(id="cover")
+            yield cover_widget_class()(id="cover")
             yield Static(id="detail")
         yield DataTable(id="library")     # library list below
         yield RichLog(id="log", markup=True)
@@ -379,7 +398,7 @@ class OpenAudibleApp(App):
 
     def _show_cover(self, path) -> None:
         try:
-            self.query_one("#cover", CoverImage).image = str(path) if path else None
+            self.query_one("#cover").image = str(path) if path else None
         except Exception:
             pass
 

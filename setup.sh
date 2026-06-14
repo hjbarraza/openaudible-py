@@ -79,4 +79,9 @@ case ":$PATH:" in
 esac
 
 echo
-echo "Done. Launch with:  openaudible-tui"
+echo "==> Setup complete. Launching openaudible-tui (it will open a browser to sign in)…"
+if [ -t 1 ]; then
+  exec "$PWD/.venv/bin/openaudible-tui"
+else
+  echo "   Not a terminal; run 'openaudible-tui' yourself."
+fi

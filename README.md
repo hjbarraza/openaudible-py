@@ -135,7 +135,9 @@ openaudible logout                      # deregister + clear credentials
 ```
 
 `OPENAUDIBLE_NO_PDF=1` skips companion PDFs · `OPENAUDIBLE_DELETE_AAX=1` deletes
-the encrypted source after converting.
+the encrypted source after converting · `OPENAUDIBLE_COVER=blocks` forces
+pixelated block covers (auto-used on Warp / Apple Terminal, which can't draw
+real images).
 
 ## Files
 
