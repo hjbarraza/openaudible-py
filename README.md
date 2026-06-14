@@ -26,7 +26,9 @@ An open-source Python equivalent of OpenAudible.
     openaudible play <ASIN>      # open in your OS player
     openaudible-tui              # Textual browser
 
-Files live under `~/Library/Application Support/openaudible-py/`
+Converted books go to `~/Documents/audiobooks/<Author>/<Title>.m4b`
+(override with `OPENAUDIBLE_BOOKS`). App state — login, catalog, and the
+encrypted source files — lives under `~/Library/Application Support/openaudible-py/`
 (override with `OPENAUDIBLE_HOME`).
 
 ### Login

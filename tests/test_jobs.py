@@ -7,7 +7,7 @@ EMPTY_META = {"content_metadata": {"chapter_info": {"chapters": []}}}
 
 def test_process_book_aaxc_uses_voucher(tmp_path, monkeypatch):
     import openaudible.jobs as j
-    cfg = Config(base_dir=tmp_path)
+    cfg = Config(base_dir=tmp_path, books_dir=tmp_path / "books")
     cfg.ensure_dirs()
     book = Book(asin="B01", title="Title", author="Auth")
 
@@ -32,7 +32,7 @@ def test_process_book_aaxc_uses_voucher(tmp_path, monkeypatch):
 
 def test_process_book_aax_uses_activation_bytes(tmp_path, monkeypatch):
     import openaudible.jobs as j
-    cfg = Config(base_dir=tmp_path)
+    cfg = Config(base_dir=tmp_path, books_dir=tmp_path / "books")
     cfg.ensure_dirs()
     book = Book(asin="B01", title="Title", author="Auth")
 
@@ -54,7 +54,7 @@ def test_process_book_aax_uses_activation_bytes(tmp_path, monkeypatch):
 
 def test_process_book_skips_when_converted(tmp_path, monkeypatch):
     import openaudible.jobs as j
-    cfg = Config(base_dir=tmp_path)
+    cfg = Config(base_dir=tmp_path, books_dir=tmp_path / "books")
     cfg.ensure_dirs()
     book = Book(asin="B01", title="Title", author="Auth")
     out = cfg.books_dir / "Auth" / "Title.m4b"
