@@ -20,6 +20,7 @@ An open-source Python equivalent of OpenAudible.
 ## Use
 
     openaudible login            # opens a browser, signs you in automatically
+    openaudible logout           # deregister this device + clear credentials
     openaudible sync             # pull your library
     openaudible ls               # list books
     openaudible get <ASIN>       # download + de-DRM + convert to M4B
@@ -47,6 +48,7 @@ progress** (percent + MB), and playback — all from the keyboard.
 | `a` | get ALL un-converted books in view |
 | `t` | sort: author → title → recently bought |
 | `s` | sync library from Audible |
+| `l` / `L` | log in (browser) / log out |
 | `/` | search (title / author / series) |
 | `j`/`k`, arrows, PgUp/PgDn, Home/End, `Ctrl+U`/`Ctrl+D` | move |
 | `r` refresh · `esc` clear · `?` help · `q` quit | |

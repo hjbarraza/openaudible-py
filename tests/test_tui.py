@@ -184,3 +184,39 @@ def test_sort_books_modes():
     assert [b.asin for b in sort_books(books, "title")] == ["2", "1"]
     assert [b.asin for b in sort_books(books, "author")] == ["2", "1"]
     assert [b.asin for b in sort_books(books, "recent")] == ["2", "1"]
+
+
+@pytest.mark.asyncio
+async def test_tui_logout_clears_auth(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAUDIBLE_HOME", str(tmp_path))
+    cfg = Config.load(); cfg.ensure_dirs(); cfg.auth_file.write_text("{}")
+    _seed(tmp_path, [Book(asin="1", title="Dune")])
+    async with OpenAudibleApp().run_test() as pilot:
+        await pilot.pause()
+        app = pilot.app
+        import openaudible.tui.app as m
+        removed = []
+        monkeypatch.setattr(m.auth_mod, "logout",
+                            lambda f, **k: removed.append(f))
+        app._auth = object()
+        app.action_logout()
+        for _ in range(5):
+            await pilot.pause(0.05)
+        assert removed and app._auth is None
+
+
+@pytest.mark.asyncio
+async def test_tui_login_when_already_logged_in_notifies(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAUDIBLE_HOME", str(tmp_path))
+    _seed(tmp_path, [Book(asin="1", title="Dune")])
+    async with OpenAudibleApp().run_test() as pilot:
+        await pilot.pause()
+        app = pilot.app
+        monkeypatch.setattr(app, "get_auth", lambda: object())
+        notes, started = [], []
+        monkeypatch.setattr(app, "notify", lambda msg, **k: notes.append(msg))
+        monkeypatch.setattr(app, "run_login", lambda *a, **k: started.append(1))
+        app.action_login()
+        await pilot.pause()
+        assert started == []
+        assert any("already logged in" in n.lower() for n in notes)

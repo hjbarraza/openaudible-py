@@ -40,3 +40,21 @@ def test_login_browser_failure_falls_back_to_manual(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "copy/paste" in result.stdout.lower()
     assert (tmp_path / ".login_pending.json").exists()
+
+
+def test_logout_removes_auth(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAUDIBLE_HOME", str(tmp_path))
+    import openaudible.cli as cli_mod
+    cfg = Config.load(); cfg.ensure_dirs(); cfg.auth_file.write_text("{}")
+    monkeypatch.setattr(cli_mod.auth_mod, "logout",
+                        lambda f, **k: __import__("pathlib").Path(f).unlink())
+    result = runner.invoke(app, ["logout"])
+    assert result.exit_code == 0
+    assert "Logged out" in result.stdout
+    assert not cfg.auth_file.exists()
+
+def test_logout_when_not_logged_in(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAUDIBLE_HOME", str(tmp_path))
+    result = runner.invoke(app, ["logout"])
+    assert result.exit_code == 0
+    assert "Not logged in" in result.stdout

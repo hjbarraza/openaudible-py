@@ -80,6 +80,17 @@ def login(
 
 
 @app.command()
+def logout():
+    """Log out: deregister this device and remove stored credentials."""
+    cfg = _cfg()
+    if not auth_mod.exists(cfg.auth_file):
+        console.print("Not logged in.")
+        return
+    auth_mod.logout(cfg.auth_file)
+    console.print("[green]Logged out.[/green]")
+
+
+@app.command()
 def sync():
     """Pull your library from Audible into the local catalog."""
     cfg = _cfg()

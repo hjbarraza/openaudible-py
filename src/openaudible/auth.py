@@ -30,6 +30,20 @@ def load(auth_file: Path, password: Optional[str] = None):
     return audible.Authenticator.from_file(auth_file)
 
 
+def logout(auth_file: Path, deregister: bool = True) -> None:
+    """Remove stored credentials, deregistering the device with Audible first.
+
+    The local auth file is always removed, even if deregistration fails (e.g.
+    offline or an already-revoked token).
+    """
+    if deregister and exists(auth_file):
+        try:
+            load(auth_file).deregister_device()
+        except Exception:
+            pass
+    Path(auth_file).unlink(missing_ok=True)
+
+
 def login_browser(marketplace: str = "us"):
     """One-shot login: opens a browser, signs in, and auto-captures the result.
 

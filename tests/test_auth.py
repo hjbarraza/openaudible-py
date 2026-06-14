@@ -62,3 +62,20 @@ def test_complete_login_extracts_code(monkeypatch):
     assert captured["authorization_code"] == "ANxyhamkEKUQBUXcWFrZrUby"
     assert captured["domain"] == "com" and captured["serial"] == "S1"
     assert result.attrs == {"adp_token": "x"}
+
+def test_logout_deregisters_and_removes(tmp_path, monkeypatch):
+    p = tmp_path / "auth.json"; p.write_text("{}")
+    called = {}
+    class Fake:
+        def deregister_device(self): called["d"] = True
+    monkeypatch.setattr(auth, "load", lambda f: Fake())
+    auth.logout(p)
+    assert called.get("d") is True
+    assert not p.exists()
+
+def test_logout_removes_even_if_deregister_fails(tmp_path, monkeypatch):
+    p = tmp_path / "auth.json"; p.write_text("{}")
+    def boom(f): raise RuntimeError("offline")
+    monkeypatch.setattr(auth, "load", boom)
+    auth.logout(p)
+    assert not p.exists()

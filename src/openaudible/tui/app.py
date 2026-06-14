@@ -108,6 +108,10 @@ HELP_TEXT = """[b]openaudible — keyboard controls[/b]
   s                 sync library from Audible
   r                 refresh   ·   / search   ·   Esc clear
 
+[b cyan]Account[/b cyan]
+  l                 log in (opens a browser)
+  L                 log out (deregister this device)
+
 [b cyan]Other[/b cyan]
   ?                 this help     q  quit
 
@@ -153,6 +157,9 @@ class OpenAudibleApp(App):
         Binding("slash", "search", "Search"),
         Binding("question_mark", "help", "Help"),
         Binding("q", "quit", "Quit"),
+        # Account (hidden from the footer).
+        Binding("l", "login", "Login", show=False),
+        Binding("L", "logout", "Logout", show=False),
         # Navigation + housekeeping (hidden from the footer to keep it readable).
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
@@ -418,6 +425,46 @@ class OpenAudibleApp(App):
         if self._auth is None and auth_mod.exists(self.cfg.auth_file):
             self._auth = auth_mod.load(self.cfg.auth_file)
         return self._auth
+
+    def action_login(self) -> None:
+        if self.get_auth() is not None:
+            self.notify("Already logged in. Press L to log out first.")
+            return
+        self.log_line("[yellow]Opening a browser to sign in…[/yellow]")
+        self.run_login()
+
+    @work(thread=True, group="login", exclusive=True)
+    def run_login(self, marketplace: str = "us") -> None:
+        try:
+            authenticator = auth_mod.login_browser(marketplace)
+        except Exception as exc:
+            self.call_from_thread(self.log_line, f"[red]Login failed[/red]: {exc}")
+            return
+        auth_mod.save(authenticator, self.cfg.auth_file)
+        self.call_from_thread(self._login_done)
+
+    def _login_done(self) -> None:
+        self._auth = None
+        self.get_auth()
+        self.notify("Logged in. Press s to sync your library.")
+        self.log_line("[green]Logged in.[/green]")
+
+    def action_logout(self) -> None:
+        if not auth_mod.exists(self.cfg.auth_file):
+            self.notify("Not logged in.")
+            return
+        self.log_line("[yellow]Logging out…[/yellow]")
+        self.run_logout()
+
+    @work(thread=True, group="logout", exclusive=True)
+    def run_logout(self) -> None:
+        auth_mod.logout(self.cfg.auth_file)
+        self.call_from_thread(self._logout_done)
+
+    def _logout_done(self) -> None:
+        self._auth = None
+        self.notify("Logged out.")
+        self.log_line("[dim]Logged out.[/dim]")
 
     # ---- job queue ----
     def _enqueue(self, asin: str) -> bool:
