@@ -45,3 +45,12 @@ def test_write_ffmetadata_has_chapter_blocks(tmp_path):
     assert "TIMEBASE=1/1000" in text
     assert "title=Intro" in text
     assert "START=1000" in text and "END=5000" in text
+
+from openaudible.convert import ConversionError
+import pytest
+
+def test_convert_cancel_before_start_raises(sample_m4a, tmp_path):
+    dst = tmp_path / "out.m4b"
+    with pytest.raises(ConversionError, match="canceled"):
+        convert(src=sample_m4a, dst=dst, fmt="m4b", cancel_check=lambda: True)
+    assert not dst.exists()

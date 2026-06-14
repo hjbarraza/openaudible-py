@@ -2,19 +2,27 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import threading
+from collections import deque
 from typing import Optional
 
 from textual import work
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal
+from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
 
 from .. import auth as auth_mod
 from ..catalog import Catalog
 from ..client import fetch_library
 from ..config import Config
+from ..convert import ConversionError
 from ..jobs import output_path, process_book
 from ..models import Book
+
+MAX_CONCURRENT = 2
+HALF_PAGE = 10
 
 
 def fmt_runtime(minutes: int) -> str:
@@ -38,7 +46,6 @@ def status_icon(book: Book) -> str:
 
 
 def convert_status(ffmpeg_line: str) -> str:
-    """Turn an ffmpeg progress line into a short 'converting HH:MM:SS' label."""
     i = ffmpeg_line.find("time=")
     if i == -1:
         return "⚙ converting"
@@ -48,6 +55,45 @@ def convert_status(ffmpeg_line: str) -> str:
 
 COLUMNS = [(" ", "status"), ("Title", "title"), ("Author", "author"),
            ("Series", "series"), ("Time", "time")]
+
+HELP_TEXT = """[b]openaudible — keyboard controls[/b]
+
+[b cyan]Move[/b cyan]
+  ↑ / ↓ · j / k     up / down
+  PgUp / PgDn       page
+  Home / End        top / bottom
+  Ctrl+U / Ctrl+D   half page
+
+[b cyan]Act on the selected book[/b cyan]
+  Enter             get if new, play if already converted
+  g                 get  (download + de-DRM + convert)
+  p                 play in your OS player
+  o                 open the book's folder
+  c                 cancel this book's job
+
+[b cyan]Library[/b cyan]
+  a                 get ALL un-converted books in view
+  s                 sync library from Audible
+  r                 refresh   ·   / search   ·   Esc clear
+
+[b cyan]Other[/b cyan]
+  ?                 this help     q  quit
+
+[dim]Up to 2 downloads run at once; the rest wait as “queued”.[/dim]
+[dim]Press Esc or ? to close.[/dim]"""
+
+
+class HelpScreen(ModalScreen):
+    BINDINGS = [("escape", "dismiss"), ("question_mark", "dismiss"),
+                ("q", "dismiss")]
+    CSS = """
+    HelpScreen { align: center middle; }
+    #help { width: 64; height: auto; padding: 1 2; background: $panel;
+            border: round $accent; }
+    """
+
+    def compose(self) -> ComposeResult:
+        yield Static(HELP_TEXT, id="help")
 
 
 class OpenAudibleApp(App):
@@ -61,14 +107,23 @@ class OpenAudibleApp(App):
     #log { height: 8; border-top: solid $panel; padding: 0 1; }
     """
     BINDINGS = [
-        ("/", "search", "Search"),
-        ("g", "get", "Get"),
-        ("p", "play", "Play"),
-        ("o", "open_folder", "Folder"),
-        ("s", "sync", "Sync"),
-        ("r", "refresh", "Refresh"),
-        ("escape", "clear_search", "Clear"),
-        ("q", "quit", "Quit"),
+        Binding("enter", "primary", "Get/Play"),
+        Binding("g", "get", "Get"),
+        Binding("p", "play", "Play"),
+        Binding("o", "open_folder", "Folder"),
+        Binding("c", "cancel", "Cancel"),
+        Binding("a", "get_all", "Get all"),
+        Binding("s", "sync", "Sync"),
+        Binding("slash", "search", "Search"),
+        Binding("question_mark", "help", "Help"),
+        Binding("q", "quit", "Quit"),
+        # Navigation + housekeeping (hidden from the footer to keep it readable).
+        Binding("j", "cursor_down", "Down", show=False),
+        Binding("k", "cursor_up", "Up", show=False),
+        Binding("ctrl+d", "half_down", "Half down", show=False),
+        Binding("ctrl+u", "half_up", "Half up", show=False),
+        Binding("r", "refresh", "Refresh", show=False),
+        Binding("escape", "clear_search", "Clear", show=False),
     ]
 
     def __init__(self) -> None:
@@ -76,8 +131,12 @@ class OpenAudibleApp(App):
         self.cfg = Config.load()
         self.catalog = Catalog(self.cfg.db_file)
         self._auth = None
-        self._active: dict[str, str] = {}  # asin -> live status label
+        self._status: dict[str, str] = {}          # asin -> live status label
+        self._cancel: dict[str, threading.Event] = {}  # asin -> cancel flag
+        self._waiting: deque[str] = deque()          # waiting asins
+        self._busy: set[str] = set()            # asins in a worker
 
+    # ---- layout ----
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield Input(placeholder="Search title / author / series…", id="search")
@@ -93,7 +152,9 @@ class OpenAudibleApp(App):
         for label, key in COLUMNS:
             table.add_column(label, key=key)
         self.load_rows()
-        self.log_line("[dim]Ready. / search · g get · p play · s sync · q quit[/dim]")
+        table.focus()
+        self.log_line("[dim]Ready. Enter=get/play · g get · a all · s sync · "
+                      "? help · q quit[/dim]")
 
     # ---- data / rendering ----
     def current_books(self) -> list[Book]:
@@ -104,7 +165,7 @@ class OpenAudibleApp(App):
         table = self.query_one("#library", DataTable)
         table.clear()
         for b in self.current_books():
-            table.add_row(self._active.get(b.asin) or status_icon(b),
+            table.add_row(self._status.get(b.asin) or status_icon(b),
                           trunc(b.title, 48), trunc(b.author, 24),
                           trunc(b.series, 22), fmt_runtime(b.runtime_min),
                           key=b.asin)
@@ -115,15 +176,17 @@ class OpenAudibleApp(App):
         if table.row_count == 0:
             return None
         try:
-            cell = table.coordinate_to_cell_key(table.cursor_coordinate)
-            return cell.row_key.value
+            return table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
         except Exception:
             return None
 
+    def selected_book(self) -> Optional[Book]:
+        asin = self.selected_asin()
+        return self.catalog.get(asin) if asin else None
+
     def update_detail(self) -> None:
         detail = self.query_one("#detail", Static)
-        asin = self.selected_asin()
-        book = self.catalog.get(asin) if asin else None
+        book = self.selected_book()
         if not book:
             detail.update("[dim]No selection[/dim]")
             return
@@ -137,7 +200,7 @@ class OpenAudibleApp(App):
             f"[cyan]Length[/cyan]    {fmt_runtime(book.runtime_min) or '—'}",
             f"[cyan]ASIN[/cyan]      {book.asin}",
             "",
-            f"[cyan]Status[/cyan]    {self._active.get(book.asin) or state}",
+            f"[cyan]Status[/cyan]    {self._status.get(book.asin) or state}",
         ]
         out = output_path(self.cfg, book)
         if book.converted and out.exists():
@@ -147,13 +210,23 @@ class OpenAudibleApp(App):
     def log_line(self, text: str) -> None:
         self.query_one("#log", RichLog).write(text)
 
-    def set_status(self, asin: str, text: str) -> None:
-        self._active[asin] = text
-        table = self.query_one("#library", DataTable)
+    def _set_cell(self, asin: str, text: str) -> None:
         try:
-            table.update_cell(asin, "status", text, update_width=False)
+            self.query_one("#library", DataTable).update_cell(
+                asin, "status", text, update_width=False)
         except Exception:
-            pass  # row not currently visible (filtered) — table refreshes later
+            pass  # row filtered out of view; will refresh later
+
+    def set_status(self, asin: str, text: str) -> None:
+        self._status[asin] = text
+        self._set_cell(asin, text)
+        self.update_detail()
+
+    def clear_status(self, asin: str) -> None:
+        self._status.pop(asin, None)
+        book = self.catalog.get(asin)
+        if book:
+            self._set_cell(asin, status_icon(book))
         self.update_detail()
 
     # ---- events ----
@@ -164,7 +237,28 @@ class OpenAudibleApp(App):
         if event.input.id == "search":
             self.load_rows()
 
-    # ---- navigation actions ----
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "search":
+            self.query_one("#library", DataTable).focus()
+
+    # ---- navigation ----
+    def action_cursor_down(self) -> None:
+        self.query_one("#library", DataTable).action_cursor_down()
+
+    def action_cursor_up(self) -> None:
+        self.query_one("#library", DataTable).action_cursor_up()
+
+    def action_half_down(self) -> None:
+        t = self.query_one("#library", DataTable)
+        if t.row_count:
+            t.move_cursor(row=min(t.cursor_row + HALF_PAGE, t.row_count - 1))
+
+    def action_half_up(self) -> None:
+        t = self.query_one("#library", DataTable)
+        if t.row_count:
+            t.move_cursor(row=max(t.cursor_row - HALF_PAGE, 0))
+
+    # ---- search / help ----
     def action_search(self) -> None:
         box = self.query_one("#search", Input)
         box.add_class("visible")
@@ -180,32 +274,52 @@ class OpenAudibleApp(App):
     def action_refresh(self) -> None:
         self.load_rows()
 
+    def action_help(self) -> None:
+        self.push_screen(HelpScreen())
+
     # ---- file actions ----
     def _open(self, path) -> None:
         opener = "open" if sys.platform == "darwin" else "xdg-open"
         subprocess.Popen([opener, str(path)])
 
-    def action_play(self) -> None:
-        book = self._selected_book()
-        if not book:
-            return
+    def _play(self, book: Book) -> None:
         path = output_path(self.cfg, book)
         if not path.exists():
             self.notify("Not converted yet — press g to get it.", severity="warning")
             return
         self._open(path)
 
+    def action_play(self) -> None:
+        book = self.selected_book()
+        if book:
+            self._play(book)
+
     def action_open_folder(self) -> None:
-        book = self._selected_book()
+        book = self.selected_book()
         if not book:
             return
         folder = output_path(self.cfg, book).parent
         folder.mkdir(parents=True, exist_ok=True)
         self._open(folder)
 
-    def _selected_book(self) -> Optional[Book]:
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        # Enter on a focused DataTable arrives here (not via the key binding).
+        self._primary(event.row_key.value)
+
+    def action_primary(self) -> None:
         asin = self.selected_asin()
-        return self.catalog.get(asin) if asin else None
+        if asin:
+            self._primary(asin)
+
+    def _primary(self, asin: str) -> None:
+        """Enter: play if already converted, otherwise get."""
+        book = self.catalog.get(asin)
+        if not book:
+            return
+        if book.converted:
+            self._play(book)
+        else:
+            self._get(asin)
 
     # ---- auth ----
     def get_auth(self):
@@ -213,61 +327,128 @@ class OpenAudibleApp(App):
             self._auth = auth_mod.load(self.cfg.auth_file)
         return self._auth
 
-    # ---- jobs ----
+    # ---- job queue ----
+    def _enqueue(self, asin: str) -> bool:
+        book = self.catalog.get(asin)
+        if not book or book.converted:
+            return False
+        if asin in self._busy or asin in self._waiting:
+            return False
+        self._cancel[asin] = threading.Event()
+        self._waiting.append(asin)
+        self.set_status(asin, "queued")
+        return True
+
+    def _pump(self) -> None:
+        while len(self._busy) < MAX_CONCURRENT and self._waiting:
+            asin = self._waiting.popleft()
+            event = self._cancel.get(asin)
+            if event and event.is_set():       # canceled while queued
+                self.clear_status(asin)
+                self._cancel.pop(asin, None)
+                continue
+            self._busy.add(asin)
+            self.run_get(asin)
+
+    def _after_job(self, asin: str) -> None:
+        self._busy.discard(asin)
+        self._cancel.pop(asin, None)
+        self._pump()
+
     def action_get(self) -> None:
-        book = self._selected_book()
+        asin = self.selected_asin()
+        if asin:
+            self._get(asin)
+
+    def _get(self, asin: str) -> None:
+        book = self.catalog.get(asin)
         if not book:
             return
         if book.converted:
-            self.notify(f"Already converted: {book.title}")
-            return
-        if book.asin in self._active:
+            self.notify("Already converted — press p to play.")
             return
         if self.get_auth() is None:
             self.notify("Not logged in. Run 'openaudible login'.", severity="error")
             return
-        self.set_status(book.asin, "⏬ downloading")
-        self.log_line(f"[yellow]Getting[/yellow] {book.title}")
-        self.run_get(book.asin)
+        if self._enqueue(asin):
+            self.log_line(f"[yellow]Queued[/yellow] {book.title}")
+            self._pump()
+
+    def action_get_all(self) -> None:
+        if self.get_auth() is None:
+            self.notify("Not logged in. Run 'openaudible login'.", severity="error")
+            return
+        queued = sum(1 for b in self.current_books() if self._enqueue(b.asin))
+        if queued:
+            self.log_line(f"[yellow]Queued {queued} books.[/yellow]")
+            self._pump()
+        else:
+            self.notify("Nothing to get.")
+
+    def action_cancel(self) -> None:
+        asin = self.selected_asin()
+        if not asin:
+            return
+        event = self._cancel.get(asin)
+        if asin in self._waiting:
+            self._waiting.remove(asin)
+            self._cancel.pop(asin, None)
+            self.clear_status(asin)
+            self.log_line("[dim]Removed from queue.[/dim]")
+        elif asin in self._busy and event:
+            event.set()
+            self.log_line("[yellow]Canceling…[/yellow]")
+        else:
+            self.notify("No active job for this book.")
 
     @work(thread=True, group="jobs")
     def run_get(self, asin: str) -> None:
         book = self.catalog.get(asin)
         auth = self.get_auth()
+        event = self._cancel.get(asin)
+        self.call_from_thread(self.set_status, asin, "⏬ downloading")
 
         def progress(line: str) -> None:
             self.call_from_thread(self.set_status, asin, convert_status(line))
 
         try:
-            process_book(auth=auth, cfg=self.cfg, book=book, on_progress=progress)
-        except Exception as exc:  # surface, don't crash the UI
-            self.call_from_thread(self.job_failed, asin, str(exc))
+            process_book(auth=auth, cfg=self.cfg, book=book, on_progress=progress,
+                         cancel_check=(event.is_set if event else None))
+        except ConversionError as exc:
+            if "canceled" in str(exc):
+                self.call_from_thread(self.job_canceled, asin)
+            else:
+                self.call_from_thread(self.job_failed, asin, str(exc))
+            return
+        except Exception as exc:
+            if event and event.is_set():
+                self.call_from_thread(self.job_canceled, asin)
+            else:
+                self.call_from_thread(self.job_failed, asin, str(exc))
             return
         self.catalog.mark(asin, downloaded=True, converted=True)
         self.call_from_thread(self.job_done, asin)
 
     def job_done(self, asin: str) -> None:
-        self._active.pop(asin, None)
+        self._status.pop(asin, None)
+        self._set_cell(asin, "●")
         book = self.catalog.get(asin)
-        try:
-            self.query_one("#library", DataTable).update_cell(
-                asin, "status", "●", update_width=False)
-        except Exception:
-            pass
-        self.log_line(f"[green]Done[/green] {book.title}")
+        self.log_line(f"[green]Done[/green] {book.title if book else asin}")
         self.update_detail()
+        self._after_job(asin)
 
     def job_failed(self, asin: str, message: str) -> None:
-        self._active.pop(asin, None)
-        try:
-            self.query_one("#library", DataTable).update_cell(
-                asin, "status", "✗", update_width=False)
-        except Exception:
-            pass
+        self.clear_status(asin)
         last = message.splitlines()[-1] if message else "error"
         self.log_line(f"[red]Failed[/red] {asin}: {last}")
-        self.update_detail()
+        self._after_job(asin)
 
+    def job_canceled(self, asin: str) -> None:
+        self.clear_status(asin)
+        self.log_line(f"[dim]Canceled[/dim] {asin}")
+        self._after_job(asin)
+
+    # ---- sync ----
     def action_sync(self) -> None:
         if self.get_auth() is None:
             self.notify("Not logged in. Run 'openaudible login'.", severity="error")

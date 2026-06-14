@@ -39,12 +39,19 @@ keyboard.
 
 | Key | Action |
 |-----|--------|
-| `/` | search (title / author / series) |
-| `g` | get — download + de-DRM + convert (runs in the background) |
+| `Enter` | get if new, play if already converted |
+| `g` | get — download + de-DRM + convert (background) |
 | `p` | play the converted book in your OS player |
 | `o` | open the book's folder |
+| `c` | cancel this book's job |
+| `a` | get ALL un-converted books in view |
 | `s` | sync library from Audible |
-| `r` | refresh · `esc` clear search · `q` quit |
+| `/` | search (title / author / series) |
+| `j`/`k`, arrows, PgUp/PgDn, Home/End, `Ctrl+U`/`Ctrl+D` | move |
+| `r` refresh · `esc` clear · `?` help · `q` quit | |
+
+Up to 2 downloads run at once; the rest queue. `c` cancels a queued job
+instantly or terminates a running one.
 
 ### Login
 

@@ -49,9 +49,12 @@ def convert(*, src: Path, dst: Path, fmt: str,
             key: Optional[str] = None, iv: Optional[str] = None,
             activation_bytes: Optional[str] = None,
             metadata_file: Optional[Path] = None,
-            on_progress: Optional[Callable[[str], None]] = None) -> Path:
+            on_progress: Optional[Callable[[str], None]] = None,
+            cancel_check: Optional[Callable[[], bool]] = None) -> Path:
     if not src.exists():
         raise ConversionError(f"source not found: {src}")
+    if cancel_check and cancel_check():
+        raise ConversionError("canceled")
     dst.parent.mkdir(parents=True, exist_ok=True)
     args = build_args(src=src, dst=dst, fmt=fmt, key=key, iv=iv,
                       activation_bytes=activation_bytes,
@@ -59,6 +62,12 @@ def convert(*, src: Path, dst: Path, fmt: str,
     proc = subprocess.Popen(args, stderr=subprocess.PIPE, text=True)
     tail = []
     for line in proc.stderr:
+        if cancel_check and cancel_check():
+            proc.terminate()
+            proc.wait()
+            if dst.exists():
+                dst.unlink()
+            raise ConversionError("canceled")
         tail.append(line)
         if len(tail) > 40:
             tail.pop(0)

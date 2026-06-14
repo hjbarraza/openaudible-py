@@ -11,7 +11,7 @@ def test_process_book_aaxc_uses_voucher(tmp_path, monkeypatch):
     cfg.ensure_dirs()
     book = Book(asin="B01", title="Title", author="Auth")
 
-    def fake_fetch(auth, asin, aax_dir, quality="high"):
+    def fake_fetch(auth, asin, aax_dir, quality="high", cancel_check=None):
         p = Path(aax_dir) / f"{asin}.aaxc"; p.write_bytes(b"x" * 2048)
         return p, "KK", "II", EMPTY_META
     monkeypatch.setattr(j, "fetch_book", fake_fetch)
@@ -36,7 +36,7 @@ def test_process_book_aax_uses_activation_bytes(tmp_path, monkeypatch):
     cfg.ensure_dirs()
     book = Book(asin="B01", title="Title", author="Auth")
 
-    def fake_fetch(auth, asin, aax_dir, quality="high"):
+    def fake_fetch(auth, asin, aax_dir, quality="high", cancel_check=None):
         p = Path(aax_dir) / f"{asin}.aax"; p.write_bytes(b"x" * 2048)
         return p, None, None, EMPTY_META  # no voucher -> AAX
     monkeypatch.setattr(j, "fetch_book", fake_fetch)
