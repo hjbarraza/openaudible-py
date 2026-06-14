@@ -1,7 +1,8 @@
 from openaudible.keyfinder import parse_checksum, parse_rcrack_key
 
 def test_parse_checksum_from_ffmpeg_stderr():
-    stderr = "Input #0\n[aax] file checksum == 1a2b3c4d5e\nDuration: ...\n"
+    # Real ffmpeg emits the allocator address inside the brackets.
+    stderr = "Input #0\n[aax @ 0x7f8b1c008000] file checksum == 1a2b3c4d5e\nDuration: ...\n"
     assert parse_checksum(stderr) == "1a2b3c4d5e"
 
 def test_parse_rcrack_key():

@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-_CHECKSUM = re.compile(r"\[aax\] file checksum == ([0-9a-fA-F]+)")
+_CHECKSUM = re.compile(r"\[aax[^\]]*\] file checksum == ([0-9a-fA-F]+)")
 _RCRACK_HEX = re.compile(r"hex:([0-9a-fA-F]+)")
 
 
