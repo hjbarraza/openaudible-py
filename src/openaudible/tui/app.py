@@ -23,6 +23,15 @@ from ..models import Book
 
 MAX_CONCURRENT = 2
 HALF_PAGE = 10
+SORTS = ["author", "title", "recent"]
+
+
+def sort_books(books: list[Book], mode: str) -> list[Book]:
+    if mode == "title":
+        return sorted(books, key=lambda b: b.title.lower())
+    if mode == "recent":  # newest purchase first; undated sink to the bottom
+        return sorted(books, key=lambda b: b.purchase_date or "", reverse=True)
+    return sorted(books, key=lambda b: (b.author.lower(), b.title.lower()))
 
 
 def fmt_runtime(minutes: int) -> str:
@@ -73,6 +82,7 @@ HELP_TEXT = """[b]openaudible — keyboard controls[/b]
 
 [b cyan]Library[/b cyan]
   a                 get ALL un-converted books in view
+  t                 sort: author → title → recently bought
   s                 sync library from Audible
   r                 refresh   ·   / search   ·   Esc clear
 
@@ -113,6 +123,7 @@ class OpenAudibleApp(App):
         Binding("o", "open_folder", "Folder"),
         Binding("c", "cancel", "Cancel"),
         Binding("a", "get_all", "Get all"),
+        Binding("t", "sort", "Sort"),
         Binding("s", "sync", "Sync"),
         Binding("slash", "search", "Search"),
         Binding("question_mark", "help", "Help"),
@@ -131,6 +142,7 @@ class OpenAudibleApp(App):
         self.cfg = Config.load()
         self.catalog = Catalog(self.cfg.db_file)
         self._auth = None
+        self._sort = "author"
         self._status: dict[str, str] = {}          # asin -> live status label
         self._cancel: dict[str, threading.Event] = {}  # asin -> cancel flag
         self._waiting: deque[str] = deque()          # waiting asins
@@ -151,15 +163,17 @@ class OpenAudibleApp(App):
         table.cursor_type = "row"
         for label, key in COLUMNS:
             table.add_column(label, key=key)
+        self.sub_title = f"sort: {self._sort}"
         self.load_rows()
         table.focus()
-        self.log_line("[dim]Ready. Enter=get/play · g get · a all · s sync · "
-                      "? help · q quit[/dim]")
+        self.log_line("[dim]Ready. Enter=get/play · g get · a all · t sort · "
+                      "s sync · ? help · q quit[/dim]")
 
     # ---- data / rendering ----
     def current_books(self) -> list[Book]:
         query = self.query_one("#search", Input).value.strip()
-        return self.catalog.search(query) if query else self.catalog.all()
+        books = self.catalog.search(query) if query else self.catalog.all()
+        return sort_books(books, self._sort)
 
     def load_rows(self) -> None:
         table = self.query_one("#library", DataTable)
@@ -272,6 +286,11 @@ class OpenAudibleApp(App):
         self.load_rows()
 
     def action_refresh(self) -> None:
+        self.load_rows()
+
+    def action_sort(self) -> None:
+        self._sort = SORTS[(SORTS.index(self._sort) + 1) % len(SORTS)]
+        self.sub_title = f"sort: {self._sort}"
         self.load_rows()
 
     def action_help(self) -> None:

@@ -160,3 +160,14 @@ async def test_cancel_removes_queued(tmp_path, monkeypatch):
         app.action_cancel()
         await pilot.pause()
         assert target not in app._waiting
+
+
+def test_sort_books_modes():
+    from openaudible.tui.app import sort_books
+    books = [
+        Book(asin="1", title="Zebra", author="Brown", purchase_date="2020-01-01"),
+        Book(asin="2", title="Apple", author="Adams", purchase_date="2026-06-01"),
+    ]
+    assert [b.asin for b in sort_books(books, "title")] == ["2", "1"]
+    assert [b.asin for b in sort_books(books, "author")] == ["2", "1"]
+    assert [b.asin for b in sort_books(books, "recent")] == ["2", "1"]
