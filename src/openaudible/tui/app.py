@@ -132,9 +132,9 @@ class OpenAudibleApp(App):
     TITLE = "openaudible"
     CSS = """
     #main { height: 1fr; }
-    #library { width: 2fr; }
-    #side { width: 1fr; border-left: solid $panel; padding: 0 1; }
-    #cover { height: 18; }
+    #library { width: 3fr; }
+    #side { width: 2fr; border-left: solid $panel; padding: 0 1; }
+    #cover { height: 24; }
     #detail { height: auto; }
     #search { dock: top; display: none; }
     #search.visible { display: block; }
