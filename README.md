@@ -26,6 +26,7 @@ An open-source Python take on OpenAudible.
   job instantly or terminates a running one. Interrupted downloads resume.
 - **Built-in player** — `p` plays in-app (`space` pause, `[`/`]` chapter, `-`/`=` speed, `f`/`b` ±30s).
 - **Read status** — `m` cycles unread → reading → finished → dnf.
+- **Edit metadata** — `e` opens an inline editor; `F` auto-fills from Audible.
 - **Companion PDFs** downloaded alongside the M4B; **notes/bookmarks** via `n`.
 - **Auto login** — opens a browser to sign in on first launch; no copy/paste.
 
@@ -51,13 +52,24 @@ own local audiobooks, and **export** of the catalog to CSV/JSON.
 
 ## Install
 
+    # 1. system tools — ffmpeg (convert) + mpv/libmpv (in-app playback)
+    brew install ffmpeg mpv          # macOS; on Linux use your package manager
+
+    # 2. get the code
+    git clone https://github.com/hjbarraza/openaudible-py.git
+    cd openaudible-py
+
+    # 3. install
     python3 -m venv .venv && . .venv/bin/activate
     pip install -e .
-    playwright install webkit    # one-time, for browser login
+    playwright install webkit        # one-time, for browser login
 
-    openaudible-tui              # launch the app
+    # 4. run
+    openaudible-tui
 
 On first run it opens a browser to sign in to Audible, then press `s` to sync.
+Crisp cover art needs a graphics-capable terminal (Ghostty, Kitty, WezTerm,
+iTerm2); other terminals fall back to block art.
 
 ## Login
 
@@ -82,6 +94,8 @@ The same engine is scriptable from the command line:
     openaudible get <ASIN>       # download + de-DRM + convert to M4B (+ PDF)
     openaudible play <ASIN>      # open in your OS player
     openaudible read <ASIN> finished   # set read status
+    openaudible edit <ASIN> --title "..." --author "..."   # edit metadata
+    openaudible autofill <ASIN>  # re-fetch metadata from Audible
     openaudible import <path>    # import local audiobooks (file or directory)
     openaudible export lib.json  # export catalog to .json or .csv
     openaudible annotations <ASIN>     # show your bookmarks / notes

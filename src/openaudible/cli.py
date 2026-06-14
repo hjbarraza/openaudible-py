@@ -196,6 +196,47 @@ def read(asin: str, status: str):
 
 
 @app.command()
+def edit(asin: str,
+         title: str = typer.Option(None),
+         author: str = typer.Option(None),
+         narrator: str = typer.Option(None),
+         series: str = typer.Option(None)):
+    """Edit a book's metadata (and re-tag the converted M4B)."""
+    from .jobs import book_file
+    from .tag import write_tags
+    cfg = _cfg()
+    cat = Catalog(cfg.db_file)
+    if not cat.get(asin):
+        console.print("[red]Not found.[/red]"); raise typer.Exit(1)
+    fields = {k: v for k, v in dict(title=title, author=author,
+              narrator=narrator, series=series).items() if v is not None}
+    if not fields:
+        console.print("Nothing to change."); return
+    cat.update_fields(asin, **fields)
+    book = cat.get(asin)
+    path = book_file(cfg, book)
+    if path.exists() and path.suffix == ".m4b":
+        write_tags(path, book, cover_bytes=None)
+    console.print(f"[green]Updated[/green] {asin}: {', '.join(fields)}")
+
+
+@app.command()
+def autofill(asin: str):
+    """Re-fetch a book's metadata from Audible and update the catalog."""
+    from .client import fetch_book_meta
+    cfg = _cfg()
+    cat = Catalog(cfg.db_file)
+    if not cat.get(asin):
+        console.print("[red]Not found.[/red]"); raise typer.Exit(1)
+    fresh = fetch_book_meta(_auth(cfg), asin)
+    if not fresh:
+        console.print("[yellow]No metadata found.[/yellow]"); return
+    cat.update_fields(asin, title=fresh.title, author=fresh.author,
+                      narrator=fresh.narrator, series=fresh.series)
+    console.print(f"[green]Auto-filled[/green] {fresh.title} — {fresh.author}")
+
+
+@app.command()
 def annotations(asin: str):
     """Show your bookmarks / notes for a book."""
     from .client import get_annotations

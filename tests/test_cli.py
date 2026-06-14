@@ -88,3 +88,28 @@ def test_read_command(tmp_path, monkeypatch):
     result = runner.invoke(app, ["read", "1", "finished"])
     assert result.exit_code == 0
     assert Catalog(cfg.db_file).get("1").read_status == "finished"
+
+
+def test_edit_command(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAUDIBLE_HOME", str(tmp_path))
+    cfg = Config.load()
+    Catalog(cfg.db_file).sync([Book(asin="1", title="Old", author="X")])
+    result = runner.invoke(app, ["edit", "1", "--title", "New Title",
+                                 "--author", "New Author"])
+    assert result.exit_code == 0
+    b = Catalog(cfg.db_file).get("1")
+    assert b.title == "New Title" and b.author == "New Author"
+
+
+def test_autofill_command(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAUDIBLE_HOME", str(tmp_path))
+    cfg = Config.load(); cfg.ensure_dirs(); cfg.auth_file.write_text("{}")
+    Catalog(cfg.db_file).sync([Book(asin="1", title="stub", author="?")])
+    import openaudible.cli as cli_mod
+    monkeypatch.setattr(cli_mod, "_auth", lambda c: object())
+    import openaudible.client as client_mod
+    monkeypatch.setattr(client_mod, "fetch_book_meta",
+                        lambda auth, asin: Book(asin="1", title="Real", author="Real A"))
+    result = runner.invoke(app, ["autofill", "1"])
+    assert result.exit_code == 0
+    assert Catalog(cfg.db_file).get("1").title == "Real"

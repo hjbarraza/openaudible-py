@@ -37,6 +37,19 @@ def fetch_library(auth) -> list[Book]:
     return asyncio.run(_fetch_library(auth))
 
 
+async def _fetch_book_meta(auth, asin: str) -> Optional[Book]:
+    async with audible.AsyncClient(auth=auth) as client:
+        lib = await Library.from_api_full_sync(
+            client, response_groups=LIBRARY_RESPONSE_GROUPS)
+        item = next((i for i in lib if i.asin == asin), None)
+        return Book.from_api_item(item._data) if item else None
+
+
+def fetch_book_meta(auth, asin: str) -> Optional[Book]:
+    """Re-fetch one book's metadata from Audible (for auto-fill)."""
+    return asyncio.run(_fetch_book_meta(auth, asin))
+
+
 DOWNLOAD_RESPONSE_GROUPS = (
     "product_desc, media, product_attrs, relationships, "
     "series, customer_rights, pdf_url"

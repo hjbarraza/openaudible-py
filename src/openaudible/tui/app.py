@@ -17,7 +17,7 @@ from textual_image.widget import Image as CoverImage
 
 from .. import auth as auth_mod
 from ..catalog import Catalog
-from ..client import fetch_library, get_annotations
+from ..client import fetch_book_meta, fetch_library, get_annotations
 from ..config import Config
 from ..convert import ConversionError
 from ..jobs import book_file, output_path, process_book
@@ -103,6 +103,7 @@ HELP_TEXT = """[b]openaudible — keyboard controls[/b]
   o                 open the book's folder
   c                 cancel this book's job
   m                 cycle read status   ·   n  show notes/bookmarks
+  e                 edit metadata        ·   F  auto-fill from Audible
 
 [b cyan]Player[/b cyan]
   space pause · x stop · [ ] chapter · - = speed · f/b ±30s
@@ -137,6 +138,39 @@ class HelpScreen(ModalScreen):
         yield Static(HELP_TEXT, id="help")
 
 
+class EditScreen(ModalScreen):
+    """Edit a book's metadata. Dismisses with a dict of fields, or None."""
+    BINDINGS = [("escape", "cancel", "Cancel")]
+    CSS = """
+    EditScreen { align: center middle; }
+    #edit { width: 72; height: auto; padding: 1 2; background: $panel;
+            border: round $accent; }
+    #edit Input { margin-bottom: 1; }
+    """
+    FIELDS = ("title", "author", "narrator", "series")
+
+    def __init__(self, book: Book) -> None:
+        super().__init__()
+        self._book = book
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="edit"):
+            yield Static("[b]Edit metadata[/b]  [dim](Enter save · Esc cancel)[/dim]")
+            for f in self.FIELDS:
+                yield Input(getattr(self._book, f), placeholder=f.title(),
+                            id=f"f_{f}")
+
+    def on_mount(self) -> None:
+        self.query_one("#f_title", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.dismiss({f: self.query_one(f"#f_{f}", Input).value
+                      for f in self.FIELDS})
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class OpenAudibleApp(App):
     TITLE = "openaudible"
     CSS = """
@@ -162,9 +196,11 @@ class OpenAudibleApp(App):
         Binding("slash", "search", "Search"),
         Binding("question_mark", "help", "Help"),
         Binding("q", "quit", "Quit"),
-        # Read status + annotations.
+        # Read status + metadata.
         Binding("m", "mark_read", "Mark", show=False),
         Binding("n", "annotations", "Notes", show=False),
+        Binding("e", "edit", "Edit", show=False),
+        Binding("F", "autofill", "Auto-fill", show=False),
         # Playback (in-app, hidden from the footer).
         Binding("space", "pause", "Pause", show=False),
         Binding("x", "stop", "Stop", show=False),
@@ -472,6 +508,57 @@ class OpenAudibleApp(App):
         self.catalog.set_read_status(book.asin, nxt)
         self.update_detail()
         self.notify(f"Read status: {nxt or 'cleared'}")
+
+    def _retag(self, asin: str) -> None:
+        from ..tag import write_tags
+        book = self.catalog.get(asin)
+        path = book_file(self.cfg, book)
+        if path.exists() and path.suffix == ".m4b":
+            try:
+                write_tags(path, book, cover_bytes=None)
+            except Exception:
+                pass
+
+    def action_edit(self) -> None:
+        book = self.selected_book()
+        if not book:
+            return
+
+        def done(fields) -> None:
+            if fields:
+                self.catalog.update_fields(book.asin, **fields)
+                self._retag(book.asin)
+                self.load_rows()
+                self.notify("Metadata updated.")
+
+        self.push_screen(EditScreen(book), done)
+
+    def action_autofill(self) -> None:
+        book = self.selected_book()
+        if not book:
+            return
+        if self.get_auth() is None:
+            self.notify("Not logged in.", severity="error")
+            return
+        self.log_line(f"[yellow]Auto-filling[/yellow] {book.title}…")
+        self.run_autofill(book.asin)
+
+    @work(thread=True, group="autofill", exclusive=True)
+    def run_autofill(self, asin: str) -> None:
+        try:
+            fresh = fetch_book_meta(self.get_auth(), asin)
+        except Exception as exc:
+            self.call_from_thread(self.log_line, f"[red]Auto-fill failed[/red]: {exc}")
+            return
+        if fresh:
+            self.catalog.update_fields(asin, title=fresh.title, author=fresh.author,
+                                       narrator=fresh.narrator, series=fresh.series)
+        self.call_from_thread(self._autofill_done, bool(fresh))
+
+    def _autofill_done(self, ok: bool) -> None:
+        self.load_rows()
+        self.log_line("[green]Auto-filled.[/green]" if ok
+                      else "[dim]No metadata found.[/dim]")
 
     def action_annotations(self) -> None:
         book = self.selected_book()

@@ -102,3 +102,12 @@ def test_process_book_pdf_and_delete_source(tmp_path, monkeypatch):
     assert pdfs and pdfs[0][0] == "http://x/p.pdf"
     assert pdfs[0][1].endswith(".pdf")
     assert not holder["src"].exists()  # source deleted after convert
+
+
+# ---- metadata edit + auto-fill (#8) ----
+def test_update_fields_whitelist(tmp_path):
+    cat = Catalog(tmp_path / "l.db")
+    cat.sync([Book(asin="1", title="Old", author="X")])
+    cat.update_fields("1", title="New", author="Y", converted=True)  # converted ignored
+    b = cat.get("1")
+    assert b.title == "New" and b.author == "Y" and b.converted is False

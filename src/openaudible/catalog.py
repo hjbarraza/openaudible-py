@@ -139,3 +139,14 @@ class Catalog:
         with self._connect() as conn:
             conn.execute("UPDATE books SET read_status=? WHERE asin=?",
                          (status, asin))
+
+    EDITABLE = ("title", "author", "narrator", "series")
+
+    def update_fields(self, asin: str, **fields) -> None:
+        cols = [c for c in fields if c in self.EDITABLE]
+        if not cols:
+            return
+        sets = ", ".join(f"{c}=?" for c in cols)
+        vals = [fields[c] for c in cols] + [asin]
+        with self._connect() as conn:
+            conn.execute(f"UPDATE books SET {sets} WHERE asin=?", vals)

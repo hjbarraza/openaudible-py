@@ -246,3 +246,20 @@ async def test_no_autologin_when_authed(tmp_path, monkeypatch, no_real_login):
     async with OpenAudibleApp().run_test() as pilot:
         await pilot.pause()
         assert not no_real_login  # already logged in → no auto-login
+
+
+@pytest.mark.asyncio
+async def test_edit_screen_updates_metadata(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAUDIBLE_HOME", str(tmp_path))
+    _seed(tmp_path, [Book(asin="1", title="Old", author="X")])
+    from openaudible.tui.app import EditScreen
+    async with OpenAudibleApp().run_test() as pilot:
+        await pilot.pause()
+        app = pilot.app
+        app.action_edit()
+        await pilot.pause(); await pilot.pause()
+        assert isinstance(app.screen, EditScreen)
+        app.screen.query_one("#f_title").value = "Brand New"
+        await pilot.press("enter")           # submit -> dismiss(fields)
+        await pilot.pause(); await pilot.pause()
+        assert app.catalog.get("1").title == "Brand New"
