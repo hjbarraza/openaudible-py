@@ -12,8 +12,25 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
+from textual.theme import Theme
 from textual.widgets import DataTable, Footer, Header, Input, RichLog, Static
 from textual_image.widget import Image as CoverImage
+
+# Black / white / gray base with purple (primary) + mint (accent).
+OA_THEME = Theme(
+    name="openaudible",
+    primary="#b794f6",     # purple
+    secondary="#5eead4",   # mint
+    accent="#5eead4",      # mint — table headers, cursor, labels
+    foreground="#f4f4f5",  # near-white
+    background="#000000",  # black
+    surface="#141416",     # dark gray
+    panel="#26262b",       # gray
+    success="#5eead4",
+    warning="#fbbf24",
+    error="#f87171",
+    dark=True,
+)
 
 from .. import auth as auth_mod
 from ..catalog import Catalog
@@ -91,13 +108,13 @@ COLUMNS = [(" ", "status"), ("Title", "title"), ("Author", "author"),
 
 HELP_TEXT = """[b]openaudible — keyboard controls[/b]
 
-[b cyan]Move[/b cyan]
+[b $accent]Move[/]
   ↑ / ↓ · j / k     up / down
   PgUp / PgDn       page
   Home / End        top / bottom
   Ctrl+U / Ctrl+D   half page
 
-[b cyan]Act on the selected book[/b cyan]
+[b $accent]Act on the selected book[/]
   Enter             get if new, play if already converted
   g                 get  (download + de-DRM + convert)
   p                 play (built-in audio player)
@@ -106,20 +123,20 @@ HELP_TEXT = """[b]openaudible — keyboard controls[/b]
   m                 cycle read status   ·   n  show notes/bookmarks
   e                 edit metadata        ·   F  auto-fill from Audible
 
-[b cyan]Player[/b cyan]
+[b $accent]Player[/]
   space pause · x stop · [ ] chapter · - = speed · f/b ±30s
 
-[b cyan]Library[/b cyan]
+[b $accent]Library[/]
   a                 get ALL un-converted books in view
   t                 sort: author → title → recently bought
   s                 sync library from Audible
   r                 refresh   ·   / search   ·   Esc clear
 
-[b cyan]Account[/b cyan]
+[b $accent]Account[/]
   l                 log in (opens a browser)
   L                 log out (deregister this device)
 
-[b cyan]Other[/b cyan]
+[b $accent]Other[/]
   ?                 this help     q  quit
 
 [dim]Up to 2 downloads run at once; the rest wait as “queued”.[/dim]
@@ -250,6 +267,8 @@ class OpenAudibleApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        self.register_theme(OA_THEME)
+        self.theme = "openaudible"
         table = self.query_one("#library", DataTable)
         table.cursor_type = "row"
         table.zebra_stripes = True
@@ -332,14 +351,14 @@ class OpenAudibleApp(App):
         else:
             state = "not downloaded"
         def kv(label, value, width=30):
-            cell = f"[cyan]{label:<8}[/cyan]{value}"
-            used = 8 + len(str(value))
+            cell = f"[$accent]{label:<9}[/]{value}"
+            used = 9 + len(str(value))
             return cell + " " * max(2, width - used)  # always ≥2-space gap
 
-        rating = f"[yellow]★ {book.rating}[/yellow]" if book.rating else ""
+        rating = f"[$warning]★ {book.rating}[/]" if book.rating else ""
         status = self._status.get(book.asin) or state
         lines = [
-            f"[b]{book.title}[/b]   {rating}",
+            f"[b $primary]{book.title}[/]   {rating}",
             "",
             kv("Author", book.author) + kv("Narrator", book.narrator or "—", 0),
             kv("Series", book.series or "—") + kv("Genre", book.genre or "—", 0),
