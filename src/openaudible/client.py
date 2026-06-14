@@ -94,8 +94,13 @@ async def _download_authed(auth, url: str, dst: Path) -> None:
         await _stream_to_file(client.session, url, Path(dst))
 
 
-def download_pdf(auth, url: str, dst: Path) -> Path:
-    """Download a companion PDF through the authed session."""
+def download_pdf(auth, asin: str, dst: Path) -> Path:
+    """Download a book's companion PDF via the /companion-file endpoint.
+
+    The raw ``pdf_url`` in the library is a stale CloudFront link that 403s; the
+    companion-file endpoint redirects to a fresh, valid URL.
+    """
+    url = f"https://www.audible.{auth.locale.domain}/companion-file/{asin}"
     asyncio.run(_download_authed(auth, url, Path(dst)))
     return Path(dst)
 

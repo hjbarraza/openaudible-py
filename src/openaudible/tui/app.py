@@ -20,7 +20,7 @@ from ..catalog import Catalog
 from ..client import fetch_book_meta, fetch_library, get_annotations
 from ..config import Config
 from ..convert import ConversionError
-from ..jobs import book_file, output_path, process_book
+from ..jobs import book_file, is_converted, output_path, process_book
 from ..models import Book
 
 MAX_CONCURRENT = 2
@@ -175,14 +175,16 @@ class EditScreen(ModalScreen):
 class OpenAudibleApp(App):
     TITLE = "openaudible"
     CSS = """
-    #libstatus { height: 1; color: $text-muted; padding: 0 1; }
-    #info { height: 16; border-bottom: solid $panel; }
+    #libstatus { height: 1; color: $text-muted; padding: 0 2; }
+    #info { height: 16; padding: 1 2 0 1; }
     #cover { width: auto; height: 14; max-width: 40; content-align: center top; }
     #detail { width: 1fr; padding: 0 2; }
-    #library { height: 1fr; }
+    #library { height: 1fr; border-top: solid $panel; scrollbar-size-vertical: 1; }
+    DataTable > .datatable--header { text-style: bold; color: $accent; }
+    DataTable > .datatable--cursor { background: $accent 35%; text-style: bold; }
     #search { dock: top; display: none; }
     #search.visible { display: block; }
-    #log { height: 6; border-top: solid $panel; padding: 0 1; }
+    #log { height: 5; border-top: solid $panel; padding: 0 2; color: $text-muted; }
     """
     BINDINGS = [
         Binding("enter", "primary", "Get/Play"),
@@ -250,6 +252,7 @@ class OpenAudibleApp(App):
     def on_mount(self) -> None:
         table = self.query_one("#library", DataTable)
         table.cursor_type = "row"
+        table.zebra_stripes = True
         for label, key in COLUMNS:
             table.add_column(label, key=key)
         self.sub_title = f"sort: {self._sort}"
@@ -270,23 +273,35 @@ class OpenAudibleApp(App):
         table = self.query_one("#library", DataTable)
         table.clear()
         for b in self.current_books():
-            table.add_row(self._status.get(b.asin) or status_icon(b),
-                          trunc(b.title, 42), trunc(b.author, 22),
-                          trunc(b.narrator, 18), trunc(b.genre, 16),
-                          b.rating or "", fmt_runtime(b.runtime_min),
+            table.add_row(self._row_icon(b),
+                          trunc(b.title, 44), trunc(b.author, 22),
+                          trunc(b.narrator, 20), trunc(b.genre, 22),
+                          b.rating or "—", fmt_runtime(b.runtime_min),
                           key=b.asin)
         self.update_detail()
         self.update_libstatus()
+
+    def _row_icon(self, b: Book) -> str:
+        """Status icon, self-healing the catalog if a converted file was deleted."""
+        live = self._status.get(b.asin)
+        if live:
+            return live
+        if b.converted and not book_file(self.cfg, b).exists():
+            self.catalog.mark(b.asin, downloaded=False, converted=False)
+            b.converted = b.downloaded = False
+        return status_icon(b)
 
     def update_libstatus(self) -> None:
         books = self.catalog.all()
         conv = sum(1 for b in books if b.converted)
         fin = sum(1 for b in books if b.read_status == "finished")
-        parts = [f"{len(books)} books", f"{conv} converted", f"{fin} finished"]
+        parts = [f"[b]{len(books)}[/b] books", f"[b]{conv}[/b] converted",
+                 f"[b]{fin}[/b] finished"]
         active = len(self._busy) + len(self._waiting)
         if active:
-            parts.append(f"{active} in queue")
-        self.query_one("#libstatus", Static).update("  ·  ".join(parts))
+            parts.append(f"[b $warning]{active} in queue[/]")
+        self.query_one("#libstatus", Static).update(
+            "  [dim]·[/dim]  ".join(parts))
 
     def selected_asin(self) -> Optional[str]:
         table = self.query_one("#library", DataTable)
@@ -308,22 +323,33 @@ class OpenAudibleApp(App):
         if not book:
             detail.update("[dim]No selection[/dim]")
             return
-        state = ("[green]converted[/green]" if book.converted
-                 else "downloaded" if book.downloaded else "not downloaded")
-        rating = f"★ {book.rating}" if book.rating else "—"
+        if is_converted(self.cfg, book):
+            state = "[green]converted[/green]"
+        elif book.converted:
+            state = "[red]file missing[/red]"
+        elif book.downloaded:
+            state = "downloaded"
+        else:
+            state = "not downloaded"
+        def kv(label, value, width=30):
+            cell = f"[cyan]{label:<8}[/cyan]{value}"
+            used = 8 + len(str(value))
+            return cell + " " * max(2, width - used)  # always ≥2-space gap
+
+        rating = f"[yellow]★ {book.rating}[/yellow]" if book.rating else ""
+        status = self._status.get(book.asin) or state
         lines = [
-            f"[b]{book.title}[/b]   [yellow]{rating}[/yellow]",
-            f"[cyan]Author[/cyan]    {book.author}"
-            f"    [cyan]Narrator[/cyan] {book.narrator or '—'}",
-            f"[cyan]Series[/cyan]    {book.series or '—'}"
-            f"    [cyan]Genre[/cyan] {book.genre or '—'}",
-            f"[cyan]Length[/cyan]    {fmt_runtime(book.runtime_min) or '—'}"
-            f"    [cyan]Status[/cyan] {self._status.get(book.asin) or state}"
-            f"    [cyan]Read[/cyan] {book.read_status or '—'}"
-            + ("    [cyan]PDF[/cyan] ✓" if book.pdf_url else ""),
+            f"[b]{book.title}[/b]   {rating}",
+            "",
+            kv("Author", book.author) + kv("Narrator", book.narrator or "—", 0),
+            kv("Series", book.series or "—") + kv("Genre", book.genre or "—", 0),
+            kv("Length", fmt_runtime(book.runtime_min) or "—")
+            + kv("Status", status, 0),
+            kv("Read", book.read_status or "—")
+            + kv("PDF", "✓" if book.pdf_url else "—", 0),
         ]
         if book.description:
-            lines += ["", f"[dim]{trunc(book.description, 360)}[/dim]"]
+            lines += ["", f"[dim]{trunc(book.description, 320)}[/dim]"]
         detail.update("\n".join(lines))
 
     # ---- cover art ----
@@ -607,11 +633,11 @@ class OpenAudibleApp(App):
             self._primary(asin)
 
     def _primary(self, asin: str) -> None:
-        """Enter: play if already converted, otherwise get."""
+        """Enter: play if the file is present, otherwise (re-)get."""
         book = self.catalog.get(asin)
         if not book:
             return
-        if book.converted:
+        if is_converted(self.cfg, book):
             self._play(book)
         else:
             self._get(asin)
@@ -703,7 +729,7 @@ class OpenAudibleApp(App):
         book = self.catalog.get(asin)
         if not book:
             return
-        if book.converted:
+        if is_converted(self.cfg, book):
             self.notify("Already converted — press p to play.")
             return
         if self.get_auth() is None:

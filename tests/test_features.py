@@ -99,7 +99,7 @@ def test_process_book_pdf_and_delete_source(tmp_path, monkeypatch):
 
     out = j.process_book(auth=None, cfg=cfg, book=book)
     assert out.exists()
-    assert pdfs and pdfs[0][0] == "http://x/p.pdf"
+    assert pdfs and pdfs[0][0] == "B1"  # download_pdf is called with the ASIN
     assert pdfs[0][1].endswith(".pdf")
     assert not holder["src"].exists()  # source deleted after convert
 
@@ -111,3 +111,13 @@ def test_update_fields_whitelist(tmp_path):
     cat.update_fields("1", title="New", author="Y", converted=True)  # converted ignored
     b = cat.get("1")
     assert b.title == "New" and b.author == "Y" and b.converted is False
+
+
+# ---- deleted-file reconcile (re-download) ----
+def test_is_converted_requires_file(tmp_path):
+    from openaudible.jobs import is_converted, output_path
+    cfg = Config(base_dir=tmp_path, books_dir=tmp_path / "b")
+    book = Book(asin="1", title="T", author="A", converted=True)
+    assert is_converted(cfg, book) is False        # flag set but no file
+    out = output_path(cfg, book); out.parent.mkdir(parents=True); out.write_bytes(b"x")
+    assert is_converted(cfg, book) is True          # file present

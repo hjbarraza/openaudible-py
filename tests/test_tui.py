@@ -125,11 +125,15 @@ async def test_enter_on_new_book_queues_get(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_enter_on_converted_book_plays(tmp_path, monkeypatch):
-    monkeypatch.setenv("OPENAUDIBLE_HOME", str(tmp_path))
+    monkeypatch.setenv("OPENAUDIBLE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("OPENAUDIBLE_BOOKS", str(tmp_path / "books"))
+    from openaudible.jobs import output_path
     cfg = Config.load()
     cat = Catalog(cfg.db_file)
     cat.sync([Book(asin="1", title="Dune", author="Herbert")])
-    cat.mark("1", converted=True)  # converted is set via mark, not sync
+    cat.mark("1", converted=True)
+    out = output_path(cfg, cat.get("1"))           # the file must actually exist now
+    out.parent.mkdir(parents=True, exist_ok=True); out.write_bytes(b"m")
     async with OpenAudibleApp().run_test() as pilot:
         await pilot.pause()
         app = pilot.app
@@ -263,3 +267,24 @@ async def test_edit_screen_updates_metadata(tmp_path, monkeypatch):
         await pilot.press("enter")           # submit -> dismiss(fields)
         await pilot.pause(); await pilot.pause()
         assert app.catalog.get("1").title == "Brand New"
+
+
+@pytest.mark.asyncio
+async def test_deleted_file_reverts_and_allows_reget(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAUDIBLE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("OPENAUDIBLE_BOOKS", str(tmp_path / "books"))
+    cfg = Config.load()
+    cat = Catalog(cfg.db_file)
+    cat.sync([Book(asin="1", title="Dune", author="H")])
+    cat.mark("1", downloaded=True, converted=True)   # converted, but no file on disk
+    async with OpenAudibleApp().run_test() as pilot:
+        await pilot.pause()
+        app = pilot.app
+        monkeypatch.setattr(app, "get_auth", lambda: object())
+        started = []
+        monkeypatch.setattr(app, "run_get", lambda asin: started.append(asin))
+        # self-heal: catalog flag flipped back since the file is missing
+        assert app.catalog.get("1").converted is False
+        app._get("1")                                # should re-get, not refuse
+        await pilot.pause()
+        assert started == ["1"]

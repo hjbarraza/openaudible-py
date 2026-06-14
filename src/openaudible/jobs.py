@@ -23,6 +23,11 @@ def book_file(cfg: Config, book: Book) -> Path:
     return Path(book.local_path) if book.local_path else output_path(cfg, book)
 
 
+def is_converted(cfg: Config, book: Book) -> bool:
+    """Converted *and* the file still exists on disk (catches deletions)."""
+    return book.converted and book_file(cfg, book).exists()
+
+
 def _check_disk_space(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
     free = shutil.disk_usage(path).free
@@ -59,7 +64,7 @@ def process_book(*, auth, cfg: Config, book: Book, force: bool = False,
     # Companion PDF, if the book has one (non-fatal on failure).
     if cfg.download_pdfs and book.pdf_url:
         try:
-            download_pdf(auth, book.pdf_url, out.with_suffix(".pdf"))
+            download_pdf(auth, book.asin, out.with_suffix(".pdf"))
         except Exception:
             pass
 
