@@ -203,6 +203,8 @@ class OpenAudibleApp(App):
         table.focus()
         self.log_line("[dim]Ready. Enter=get/play · g get · a all · t sort · "
                       "s sync · ? help · q quit[/dim]")
+        if self.get_auth() is None:  # not signed in → open login automatically
+            self.action_login()
 
     # ---- data / rendering ----
     def current_books(self) -> list[Book]:
@@ -423,7 +425,10 @@ class OpenAudibleApp(App):
     # ---- auth ----
     def get_auth(self):
         if self._auth is None and auth_mod.exists(self.cfg.auth_file):
-            self._auth = auth_mod.load(self.cfg.auth_file)
+            try:
+                self._auth = auth_mod.load(self.cfg.auth_file)
+            except Exception:
+                return None  # corrupt/unreadable auth file → treat as logged out
         return self._auth
 
     def action_login(self) -> None:

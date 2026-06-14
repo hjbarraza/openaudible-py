@@ -44,6 +44,35 @@ def logout(auth_file: Path, deregister: bool = True) -> None:
     Path(auth_file).unlink(missing_ok=True)
 
 
+def _playwright_login(url: str) -> str:
+    """Open the sign-in page, raise it to the front, and capture the redirect.
+
+    Mirrors audible's built-in Playwright callback but adds bring_to_front() so
+    the login window surfaces above the terminal.
+    """
+    from audible.login import build_init_cookies
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        iphone = p.devices["iPhone 12 Pro"]
+        browser = p.webkit.launch(headless=False)
+        context = browser.new_context(**iphone)
+        context.add_cookies([{"name": n, "value": v, "url": url}
+                             for n, v in build_init_cookies().items()])
+        page = context.new_page()
+        page.goto(url)
+        try:
+            page.bring_to_front()
+        except Exception:
+            pass
+        try:
+            while "/ap/maplanding" not in page.url:
+                page.wait_for_timeout(500)
+            return page.url
+        finally:
+            browser.close()
+
+
 def login_browser(marketplace: str = "us"):
     """One-shot login: opens a browser, signs in, and auto-captures the result.
 
@@ -51,11 +80,13 @@ def login_browser(marketplace: str = "us"):
     browser automation backend) is not installed, so the caller can fall back to
     the manual paste flow.
     """
-    from audible.login import playwright_external_login_url_callback
+    import importlib.util
+    if importlib.util.find_spec("playwright") is None:
+        raise ImportError("playwright is not installed")
 
     return audible.Authenticator.from_login_external(
         locale=marketplace,
-        login_url_callback=playwright_external_login_url_callback,
+        login_url_callback=_playwright_login,
     )
 
 

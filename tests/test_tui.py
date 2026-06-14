@@ -37,6 +37,15 @@ def test_download_status():
     assert download_status(10 * 1048576, None) == "⏬ downloading 10 MB"
 
 
+@pytest.fixture(autouse=True)
+def no_real_login(monkeypatch):
+    """Stop on-mount auto-login from launching a real browser; record calls."""
+    calls = []
+    monkeypatch.setattr(OpenAudibleApp, "run_login",
+                        lambda self, *a, **k: calls.append(1))
+    return calls
+
+
 def _seed(tmp_path, books):
     cfg = Config.load()
     Catalog(cfg.db_file).sync(books)
@@ -220,3 +229,20 @@ async def test_tui_login_when_already_logged_in_notifies(tmp_path, monkeypatch):
         await pilot.pause()
         assert started == []
         assert any("already logged in" in n.lower() for n in notes)
+
+
+@pytest.mark.asyncio
+async def test_autologin_when_not_authed(tmp_path, monkeypatch, no_real_login):
+    monkeypatch.setenv("OPENAUDIBLE_HOME", str(tmp_path))  # no auth file
+    async with OpenAudibleApp().run_test() as pilot:
+        await pilot.pause()
+        assert no_real_login  # run_login was triggered on mount
+
+
+@pytest.mark.asyncio
+async def test_no_autologin_when_authed(tmp_path, monkeypatch, no_real_login):
+    monkeypatch.setenv("OPENAUDIBLE_HOME", str(tmp_path))
+    monkeypatch.setattr(OpenAudibleApp, "get_auth", lambda self: "AUTH")
+    async with OpenAudibleApp().run_test() as pilot:
+        await pilot.pause()
+        assert not no_real_login  # already logged in → no auto-login

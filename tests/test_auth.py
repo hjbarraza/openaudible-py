@@ -20,7 +20,6 @@ def test_exists(tmp_path):
     assert auth.exists(p)
 
 def test_login_browser_passes_playwright_callback(monkeypatch):
-    from audible.login import playwright_external_login_url_callback
     captured = {}
     class FakeAuthenticator:
         @classmethod
@@ -32,7 +31,7 @@ def test_login_browser_passes_playwright_callback(monkeypatch):
     result = auth.login_browser("uk")
     assert result == "AUTHED"
     assert captured["locale"] == "uk"
-    assert captured["cb"] is playwright_external_login_url_callback
+    assert captured["cb"] is auth._playwright_login
 
 def test_begin_login_builds_url_and_state():
     url, state = auth.begin_login("us")
