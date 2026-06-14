@@ -1,13 +1,12 @@
-import tempfile
 from pathlib import Path
 from typing import Callable, Optional
 
-from .client import get_download_info, download_target
+from .client import fetch_book
 from .config import Config
-from .convert import convert, write_ffmetadata
-from .download import download_file
+from .convert import convert
+from .keyfinder import account_activation_bytes
 from .models import Book
-from .tag import build_chapter_metadata, write_tags
+from .tag import write_tags
 
 
 def output_path(cfg: Config, book: Book) -> Path:
@@ -22,19 +21,15 @@ def process_book(*, auth, cfg: Config, book: Book, force: bool = False,
         return out
     cfg.ensure_dirs()
 
-    url, codec_family, key, iv, metadata = get_download_info(auth, book.asin)
-    src = download_target(cfg.aax_dir, book.asin, codec_family)
-    download_file(url, src)
+    src, key, iv, _metadata = fetch_book(auth, book.asin, cfg.aax_dir)
+    # AAXC ships a per-file voucher (key/iv); AAX decrypts with account bytes.
+    activation_bytes = None if (key and iv) else account_activation_bytes(auth)
 
-    chapters = build_chapter_metadata(metadata)
+    # Chapters and cover are already embedded in the source; -c copy preserves
+    # them, so no separate chapter/metadata injection is needed.
     out.parent.mkdir(parents=True, exist_ok=True)
-    meta_file = None
-    if chapters and cfg.output_format == "m4b":
-        meta_file = Path(tempfile.gettempdir()) / f"{book.asin}_chapters.txt"
-        write_ffmetadata(meta_file, chapters)
-
     convert(src=src, dst=out, fmt=cfg.output_format,
-            key=key, iv=iv, activation_bytes=None,
-            metadata_file=meta_file, on_progress=on_progress)
+            key=key, iv=iv, activation_bytes=activation_bytes,
+            on_progress=on_progress)
     write_tags(out, book, cover_bytes=None)
     return out

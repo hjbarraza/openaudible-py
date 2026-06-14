@@ -37,13 +37,39 @@ def fetch_library(auth) -> list[Book]:
     return asyncio.run(_fetch_library(auth))
 
 
-async def _get_download_info(auth, asin: str, quality: str = "high"):
-    """Returns (url, codec_family, key, iv, metadata)."""
+DOWNLOAD_RESPONSE_GROUPS = (
+    "product_desc, media, product_attrs, relationships, "
+    "series, customer_rights, pdf_url"
+)
+
+# CloudFront 403s downloads without the Audible app User-Agent (matches audible-cli).
+DOWNLOAD_USER_AGENT = "Audible/671 CFNetwork/1240.0.4 Darwin/20.6.0"
+
+
+async def _stream_to_file(session, url: str, dst: Path) -> None:
+    # The signed CloudFront URL must be fetched through Audible's authenticated
+    # session; a bare httpx client gets a 403.
+    tmp = dst.with_suffix(dst.suffix + ".part")
+    with open(tmp, "wb") as fh:
+        async with session.stream("GET", url, follow_redirects=True) as resp:
+            resp.raise_for_status()
+            async for chunk in resp.aiter_bytes():
+                fh.write(chunk)
+    tmp.replace(dst)
+
+
+async def _fetch_book(auth, asin: str, aax_dir: Path, quality: str = "high"):
+    """Download the source file via the authed session.
+
+    Returns (src_path, key, iv, metadata). key/iv are set for AAXC; for AAX they
+    are None and the caller decrypts with the account activation bytes.
+    """
     async with audible.AsyncClient(auth=auth) as client:
+        client.session.headers["User-Agent"] = DOWNLOAD_USER_AGENT
         # from_api returns only one page (~50 items); paginate so books past the
-        # first page are found.
+        # first page are found. customer_rights is required for is_downloadable().
         lib = await Library.from_api_full_sync(
-            client, response_groups="media, relationships")
+            client, response_groups=DOWNLOAD_RESPONSE_GROUPS)
         item = next((i for i in lib if i.asin == asin), None)
         if item is None:
             raise ValueError(f"asin not in library: {asin}")
@@ -51,8 +77,12 @@ async def _get_download_info(auth, asin: str, quality: str = "high"):
         key, iv = voucher_from_license(lr)
         # Flat chapters avoid dropping nested sub-chapters in tree responses.
         metadata = await item.get_content_metadata(quality, chapter_type="Flat")
-        return str(url), "aaxc", key, iv, metadata
+        ext = "aaxc" if ".aaxc" in str(url).lower() else "aax"
+        dst = Path(aax_dir) / f"{asin}.{ext}"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        await _stream_to_file(client.session, str(url), dst)
+        return dst, key, iv, metadata
 
 
-def get_download_info(auth, asin: str, quality: str = "high"):
-    return asyncio.run(_get_download_info(auth, asin, quality))
+def fetch_book(auth, asin: str, aax_dir: Path, quality: str = "high"):
+    return asyncio.run(_fetch_book(auth, asin, aax_dir, quality))
