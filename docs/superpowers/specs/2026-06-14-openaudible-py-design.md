@@ -36,9 +36,13 @@ optional offline fallback.
 Build one shared core; expose it through two thin frontends (CLI + TUI). Delegate
 the hard, brittle parts to maintained open-source primitives:
 
-- **`audible`** (0.10.0) — auth, library listing, content-license/voucher,
-  account activation bytes. Auth file kept **format-compatible with `audible-cli`**
-  so an existing login works in either tool.
+- **`audible`** (0.10.0) — auth + account activation bytes; auth file kept
+  **format-compatible with `audible-cli`** so an existing login works in either tool.
+- **`audible-cli`** (0.3.3) — imported as a library (`audible_cli.models`), **not**
+  shelled out to. Reuses its proven `Library.from_api()` + `LibraryItem.get_aaxc_url()`
+  / `get_aax_url_old()` / `get_content_metadata()` and voucher decryption
+  (`decrypt_voucher_from_licenserequest`) so we don't reinvent the brittle AAXC
+  license/voucher flow. Returns download URL + voucher (`key`/`iv`) + chapters.
 - **`ffmpeg`** (8.x) — DRM removal + remux/transcode.
 - **`mutagen`** (1.47) — tag/cover/chapter writing on the output M4B.
 - **`mpv`** (libmpv via `python-mpv` 1.0.8) — playback with chapter navigation.
@@ -143,7 +147,7 @@ No real Audible account needed for the suite.
 ## Dependencies
 
 - Python ≥ 3.11.
-- PyPI: `audible`, `typer`, `textual`, `rich`, `python-mpv`, `mutagen`.
+- PyPI: `audible`, `audible-cli`, `typer`, `textual`, `rich`, `python-mpv`, `mutagen`.
   (`httpx` comes via `audible`.)
 - System: `ffmpeg`, `mpv` on PATH. Optional: `rcrack` + rainbow tables for the
   offline fallback.
