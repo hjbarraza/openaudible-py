@@ -1,3 +1,5 @@
+import json
+
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -24,11 +26,37 @@ def _auth(cfg: Config):
 
 
 @app.command()
-def login(marketplace: str = "us"):
-    """Interactive Audible login."""
+def login(
+    marketplace: str = "us",
+    url: str = typer.Option(
+        "", help="Paste the post-login URL (in quotes) to finish the login."),
+):
+    """Audible login. Run once to get the URL, then again with --url to finish."""
     cfg = _cfg()
-    authenticator = auth_mod.login_external(marketplace)
+    cfg.ensure_dirs()
+    pending = cfg.base_dir / ".login_pending.json"
+
+    if not url:
+        oauth_url, state = auth_mod.begin_login(marketplace)
+        pending.write_text(json.dumps(state))
+        console.print(
+            "[bold]1.[/bold] Open this URL and sign in. You'll land on a "
+            "'page not found' — that's expected:\n")
+        print(oauth_url)  # plain print: no wrapping/markup, copies clean
+        console.print(
+            "\n[bold]2.[/bold] Copy the full URL from your browser's address bar, "
+            "then run (keep the quotes):\n")
+        console.print(f'   openaudible login --marketplace {marketplace} '
+                      '--url "<PASTE_URL_HERE>"')
+        return
+
+    if not pending.exists():
+        console.print("[red]No pending login. Run 'openaudible login' first.[/red]")
+        raise typer.Exit(1)
+    state = json.loads(pending.read_text())
+    authenticator = auth_mod.complete_login(url, state)
     auth_mod.save(authenticator, cfg.auth_file)
+    pending.unlink(missing_ok=True)
     console.print("[green]Logged in.[/green]")
 
 
