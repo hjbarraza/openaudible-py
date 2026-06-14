@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "openaudible-py"
 version = "0.1.0"
 description = "Sync, de-DRM, convert and play your Audible library"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"  # the audible library requires Python <3.13
 dependencies = [
   "audible>=0.10.0",
   "audible-cli>=0.3.3",

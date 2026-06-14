@@ -7,6 +7,16 @@ echo "==> openaudible-py setup"
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# 0. Homebrew (macOS) — used to install ffmpeg/mpv
+if [ "$(uname)" = "Darwin" ] && ! have brew; then
+  echo "==> Homebrew not found — installing…"
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  for p in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+    [ -x "$p" ] && eval "$("$p" shellenv)"
+  done
+  have brew || { echo "!! Homebrew install did not complete; see https://brew.sh"; exit 1; }
+fi
+
 # 1. system tools: ffmpeg (convert) + mpv/libmpv (in-app playback)
 missing=()
 have ffmpeg || missing+=(ffmpeg)
@@ -24,9 +34,26 @@ if [ "${#missing[@]}" -gt 0 ]; then
   fi
 fi
 
-# 2. virtualenv
-PY="${PYTHON:-python3}"
-[ -d .venv ] || { echo "==> creating .venv"; "$PY" -m venv .venv; }
+# 2. virtualenv — needs Python 3.11 or 3.12 (the audible lib requires <3.13)
+pick_python() {
+  for c in "${PYTHON:-}" python3.12 python3.11 python3; do
+    [ -n "$c" ] && have "$c" || continue
+    if "$c" - <<'EOF' 2>/dev/null
+import sys; raise SystemExit(0 if (3, 11) <= sys.version_info[:2] < (3, 13) else 1)
+EOF
+    then echo "$c"; return 0; fi
+  done
+  return 1
+}
+if [ ! -d .venv ]; then
+  PY="$(pick_python)" || {
+    echo "!! Need Python 3.11 or 3.12 (the 'audible' library requires <3.13)."
+    echo "   macOS:  brew install python@3.12   then re-run."
+    exit 1
+  }
+  echo "==> creating .venv with $("$PY" -V)"
+  "$PY" -m venv .venv
+fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
 

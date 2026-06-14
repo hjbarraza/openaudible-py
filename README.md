@@ -54,8 +54,11 @@ Press `?` in the app for this list any time.
 
 ## Requirements
 
-- Python ≥ 3.11
+- Python **3.11 or 3.12** (the `audible` library requires <3.13)
 - `ffmpeg` and `mpv` on your PATH (`brew install ffmpeg mpv`)
+
+`setup.sh` handles all of this — it installs Homebrew if missing (macOS) and
+picks a compatible Python automatically.
 
 ## Install
 
