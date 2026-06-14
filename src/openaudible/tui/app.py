@@ -134,7 +134,8 @@ class OpenAudibleApp(App):
     #main { height: 1fr; }
     #library { width: 3fr; }
     #side { width: 2fr; border-left: solid $panel; padding: 0 1; }
-    #cover { height: 24; }
+    /* width fixed, height auto → textual-image keeps the cover's real aspect */
+    #cover { width: 100%; height: auto; max-height: 30; }
     #detail { height: auto; }
     #search { dock: top; display: none; }
     #search.visible { display: block; }
