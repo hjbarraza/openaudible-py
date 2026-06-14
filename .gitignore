@@ -12,3 +12,4 @@ library.db
 aax/
 books/
 covers/
+tests/fixtures/
