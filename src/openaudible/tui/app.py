@@ -709,8 +709,9 @@ class OpenAudibleApp(App):
     def _login_done(self) -> None:
         self._auth = None
         self.get_auth()
-        self.notify("Logged in. Press s to sync your library.")
+        self.notify("Logged in — syncing library…")
         self.log_line("[green]Logged in.[/green]")
+        self.action_sync()
 
     def action_logout(self) -> None:
         if not auth_mod.exists(self.cfg.auth_file):

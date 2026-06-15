@@ -90,18 +90,30 @@ cd openaudible-py
 openaudible-tui
 ```
 
-`setup.sh` is idempotent. On macOS it installs Homebrew (if missing), `ffmpeg`,
-`mpv`, and a compatible **Python 3.11/3.12** automatically; on Linux it lists the
-packages to install. On first run it opens a browser to sign in, then press `s`
-to sync. Crisp covers need a graphics terminal (Ghostty · Kitty · WezTerm · iTerm2).
+`setup.sh` is idempotent and fully automatic on macOS and Linux:
+
+| Step | macOS | Linux (Arch) | Linux (apt/dnf) |
+|---|---|---|---|
+| Package manager | Homebrew (auto-installed) | `pacman` | `apt-get` / `dnf` |
+| ffmpeg + mpv | `brew install` | `pacman -S` | `apt-get install` |
+| Python 3.12 | `uv` (auto-downloaded) | `uv` (auto-downloaded) | `uv` (auto-downloaded) |
+| Browser login | Playwright webkit | System `chromium` | Playwright webkit |
+
+On first run, the app opens a browser to sign in and **automatically syncs your library** once authenticated. Crisp covers need a graphics terminal (Ghostty · Kitty · WezTerm · iTerm2).
 
 <details><summary>Manual install</summary>
 
 ```sh
-brew install ffmpeg mpv          # macOS; Linux: apt install ffmpeg mpv libmpv2
-python3 -m venv .venv && . .venv/bin/activate
-pip install -e .
-playwright install webkit        # one-time, for browser login
+# macOS
+brew install ffmpeg mpv
+# Linux (Arch)
+sudo pacman -S ffmpeg mpv chromium
+# Linux (Debian/Ubuntu)
+sudo apt install ffmpeg mpv libmpv2
+
+uv venv .venv --python 3.12 && . .venv/bin/activate
+uv pip install -e .
+playwright install webkit        # macOS / Debian; not needed on Arch
 openaudible-tui
 ```
 </details>

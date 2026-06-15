@@ -49,13 +49,32 @@ def _playwright_login(url: str) -> str:
 
     Mirrors audible's built-in Playwright callback but adds bring_to_front() so
     the login window surfaces above the terminal.
+
+    On Linux, playwright's pre-built webkit binary links against Ubuntu-specific
+    library versions that don't exist on other distros (ICU 74, libwebkitgtk-6.0,
+    libjxl 0.8, etc.). System chromium is used instead on Linux — it supports the
+    same iPhone 12 Pro device profile and works without any extra deps.
     """
+    import shutil
+    import sys
+
     from audible.login import build_init_cookies
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
         iphone = p.devices["iPhone 12 Pro"]
-        browser = p.webkit.launch(headless=False)
+
+        browser = None
+        if sys.platform == "linux":
+            for exe in ("chromium", "chromium-browser", "google-chrome-stable", "google-chrome"):
+                path = shutil.which(exe)
+                if path:
+                    browser = p.chromium.launch(headless=False, executable_path=path)
+                    break
+
+        if browser is None:
+            browser = p.webkit.launch(headless=False)
+
         context = browser.new_context(**iphone)
         context.add_cookies([{"name": n, "value": v, "url": url}
                              for n, v in build_init_cookies().items()])
