@@ -78,8 +78,16 @@ CSV/JSON export.
 </tr>
 </table>
 
-> For personal use with your own purchased audiobooks and credentials.
+> [!WARNING]
+> **For personal use with your own purchased audiobooks and credentials.**
 > DRM removal runs locally, on books you own.
+>
+> Removing DRM and the legality of doing so vary by country (e.g. the US
+> DMCA §1201 anti-circumvention provisions, and equivalent laws elsewhere).
+> **You are solely responsible for ensuring your use complies with the laws of
+> your jurisdiction and with Audible's terms of service.** This software is
+> provided for lawful personal use only; the authors accept no liability for
+> misuse. If DRM circumvention is restricted where you live, do not use it.
 
 ## Install
 
