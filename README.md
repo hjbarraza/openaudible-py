@@ -100,9 +100,10 @@ CSV/JSON export.
 > public servers, torrents, or any form of mass distribution.** No help will be
 > given to anyone doing this.
 >
-> **Support authors. Buy books.** Writers, narrators, retailers, and publishers
+> **SUPPORT AUTHORS. BUY BOOKS.** Writers, narrators, retailers, and publishers
 > all need to make a living so they can keep producing the audiobooks we love.
-> **Don't be a parasite.**
+>
+> **DON'T BE A PARASITE.**
 
 ## Install
 
