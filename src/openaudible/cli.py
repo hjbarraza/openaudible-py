@@ -123,7 +123,9 @@ def info(asin: str):
 
 
 @app.command()
-def get(asin: str, force: bool = False):
+def get(asin: str, force: bool = False,
+        transcribe: bool = typer.Option(
+            False, "--transcribe", help="Also transcribe the book with local Whisper.")):
     """Download + de-DRM + convert one book."""
     cfg = _cfg()
     cat = Catalog(cfg.db_file)
@@ -134,6 +136,38 @@ def get(asin: str, force: bool = False):
                        on_progress=lambda s: console.print(s, end="\r"))
     cat.mark(asin, downloaded=True, converted=True)
     console.print(f"\n[green]Done:[/green] {out}")
+    if transcribe:
+        from .transcribe import transcribe as run_transcribe, TranscriptionError
+        try:
+            t = run_transcribe(src=out, on_progress=lambda s: console.print(s))
+        except TranscriptionError as e:
+            console.print(f"[red]Transcription failed:[/red] {e}"); raise typer.Exit(1)
+        console.print(f"[green]Transcript:[/green] {t}")
+
+
+@app.command(name="transcribe")
+def transcribe_book(
+        asin: str,
+        model: str = typer.Option(None, help="Whisper model (backend default if unset)."),
+        fmt: str = typer.Option("txt", "--format", help="txt | srt | vtt | json"),
+        language: str = typer.Option("en", help="Spoken language; '' to auto-detect.")):
+    """Transcribe a converted book with a local Whisper model."""
+    from .jobs import book_file
+    from .transcribe import transcribe as run_transcribe, TranscriptionError
+    cfg = _cfg()
+    b = Catalog(cfg.db_file).get(asin)
+    if not b:
+        console.print("[red]Not found.[/red]"); raise typer.Exit(1)
+    path = book_file(cfg, b)
+    if not path.exists():
+        console.print("[red]Not converted yet. Run 'get' first.[/red]"); raise typer.Exit(1)
+    try:
+        out = run_transcribe(src=path, model=model or None, fmt=fmt,
+                             language=language or None,
+                             on_progress=lambda s: console.print(s))
+    except TranscriptionError as e:
+        console.print(f"[red]Transcription failed:[/red] {e}"); raise typer.Exit(1)
+    console.print(f"[green]Transcript:[/green] {out}")
 
 
 @app.command()

@@ -124,8 +124,9 @@ openaudible-tui
 |---|---|---|---|
 | `Enter` get / play | `g` get | `a` get all | `c` cancel |
 | `p` play | `o` folder | `m` read status | `n` notes |
-| `e` edit | `F` auto-fill | `t` sort | `/` search |
-| `s` sync | `l` / `L` log in / out | `r` refresh | `?` help · `q` quit |
+| `e` edit | `F` auto-fill | `T` transcribe | `t` sort |
+| `/` search | `s` sync | `l` / `L` log in / out | `r` refresh |
+| `?` help | `q` quit | | |
 
 Movement: `j` `k`, arrows, PgUp/PgDn, Home/End, `Ctrl+U` / `Ctrl+D`.
 Player: `space` pause · `x` stop · `[` `]` chapter · `-` `=` speed · `f` `b` ±30s.
@@ -137,6 +138,8 @@ openaudible login                       # browser login (auto-captures)
 openaudible sync                        # pull your library
 openaudible ls [query]                  # list / search
 openaudible get <ASIN>                  # download + de-DRM + convert (+ PDF)
+openaudible get <ASIN> --transcribe     # ...and transcribe with local Whisper
+openaudible transcribe <ASIN>           # transcribe a converted book (local Whisper)
 openaudible play <ASIN>                 # open in your OS player
 openaudible read <ASIN> finished        # set read status
 openaudible edit <ASIN> --title "..."   # edit metadata

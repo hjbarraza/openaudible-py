@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import threading
+import time
 from collections import deque
 from typing import Optional
 
@@ -113,6 +114,36 @@ def convert_status(ffmpeg_line: str, total_min: int = 0) -> str:
     return f"⚙ converting {stamp}"
 
 
+def _whisper_end_secs(line: str) -> Optional[float]:
+    """Audio seconds processed, from a whisper segment line
+    "[hh:mm:ss.mmm --> hh:mm:ss.mmm]  text" (hours optional)."""
+    if "-->" not in line or "]" not in line:
+        return None
+    try:
+        end = line.split("-->")[1].split("]")[0].strip()
+        secs = 0.0
+        for p in end.split(":"):
+            secs = secs * 60 + float(p)
+        return secs
+    except (ValueError, IndexError):
+        return None
+
+
+def _fmt_eta(secs: float) -> str:
+    secs = int(secs)
+    if secs >= 3600:
+        return f"{secs // 3600}h{(secs % 3600) // 60:02d}m"
+    return f"{secs // 60}:{secs % 60:02d}"
+
+
+def transcribe_status(processed: float, total_secs: float, elapsed: float) -> str:
+    if total_secs <= 0 or processed <= 0:
+        return "📝 transcribing"
+    pct = min(99, int(processed * 100 / total_secs))
+    remaining = max(0.0, total_secs - processed) * (elapsed / processed)
+    return f"📝 transcribing {pct}% · ETA {_fmt_eta(remaining)}"
+
+
 def download_status(written: int, total: Optional[int]) -> str:
     mb = written / (1024 * 1024)
     if total:
@@ -141,6 +172,7 @@ HELP_TEXT = """[b]openaudible — keyboard controls[/b]
   c                 cancel this book's job
   m                 cycle read status   ·   n  show notes/bookmarks
   e                 edit metadata        ·   F  auto-fill from Audible
+  T                 transcribe (local Whisper)
 
 [b $accent]Player[/]
   space pause · x stop · [ ] chapter · - = speed · f/b ±30s
@@ -226,6 +258,7 @@ class OpenAudibleApp(App):
         Binding("enter", "primary", "Get/Play"),
         Binding("g", "get", "Get"),
         Binding("p", "play", "Play"),
+        Binding("T", "transcribe", "Transcribe"),
         Binding("o", "open_folder", "Folder"),
         Binding("c", "cancel", "Cancel"),
         Binding("a", "get_all", "Get all"),
@@ -270,6 +303,7 @@ class OpenAudibleApp(App):
         self._cancel: dict[str, threading.Event] = {}  # asin -> cancel flag
         self._waiting: deque[str] = deque()          # waiting asins
         self._busy: set[str] = set()            # asins in a worker
+        self._transcribing: set[str] = set()    # asins being transcribed
         self._cover_for: Optional[str] = None   # asin whose cover is shown
         self._player = None                     # lazily created mpv player
 
@@ -872,6 +906,68 @@ class OpenAudibleApp(App):
         self.clear_status(asin)
         self.log_line(f"[dim]Canceled[/dim] {asin}")
         self._after_job(asin)
+
+    # ---- transcribe ----
+    def action_transcribe(self) -> None:
+        asin = self.selected_asin()
+        if not asin:
+            return
+        book = self.catalog.get(asin)
+        if not book:
+            return
+        if not book_file(self.cfg, book).exists():
+            self.notify("Not converted yet — press g first.", severity="error")
+            return
+        if asin in self._transcribing:
+            self.notify("Already transcribing this book.")
+            return
+        self._transcribing.add(asin)
+        self.set_status(asin, "📝 transcribing")
+        self.log_line(f"[yellow]Transcribing[/yellow] {book.title}")
+        self.run_transcribe(asin)
+
+    @work(thread=True, group="transcribe")
+    def run_transcribe(self, asin: str) -> None:
+        from ..transcribe import TranscriptionError, transcribe
+        book = self.catalog.get(asin)
+        path = book_file(self.cfg, book)
+        total_secs = book.runtime_min * 60 if book.runtime_min else 0
+        start = time.monotonic()
+        last_pct = {"v": -1}  # throttle UI updates to whole-percent changes
+
+        def on_progress(line: str) -> None:
+            processed = _whisper_end_secs(line)
+            if processed is None:
+                return
+            pct = int(processed * 100 / total_secs) if total_secs else -1
+            if pct == last_pct["v"]:
+                return
+            last_pct["v"] = pct
+            self.call_from_thread(
+                self.set_status, asin,
+                transcribe_status(processed, total_secs, time.monotonic() - start))
+
+        try:
+            out = transcribe(src=path, on_progress=on_progress)
+        except TranscriptionError as exc:
+            self.call_from_thread(self._transcribe_failed, asin, str(exc))
+            return
+        except Exception as exc:
+            self.call_from_thread(self._transcribe_failed, asin, str(exc))
+            return
+        self.call_from_thread(self._transcribe_done, asin, out.name)
+
+    def _transcribe_done(self, asin: str, name: str) -> None:
+        self._transcribing.discard(asin)
+        self.clear_status(asin)
+        self.log_line(f"[green]Transcript[/green] {name}")
+        self.update_libstatus()
+
+    def _transcribe_failed(self, asin: str, message: str) -> None:
+        self._transcribing.discard(asin)
+        self.clear_status(asin)
+        last = message.splitlines()[-1] if message else "error"
+        self.log_line(f"[red]Transcription failed[/red] {asin}: {last}")
 
     # ---- sync ----
     def action_sync(self) -> None:

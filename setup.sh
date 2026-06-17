@@ -53,9 +53,9 @@ fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
-# ── 4. Package install ─────────────────────────────────────────────────────────
+# ── 4. Package install (+ local Whisper transcription backend) ──────────────────
 echo "==> Installing package + dependencies"
-uv pip install -q -e .
+uv pip install -q -e ".[transcribe]"
 
 # ── 5. Playwright webkit + OS-level deps ──────────────────────────────────────
 echo "==> Installing playwright webkit"

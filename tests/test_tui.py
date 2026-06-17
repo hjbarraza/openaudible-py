@@ -4,6 +4,7 @@ from openaudible.catalog import Catalog
 from openaudible.models import Book
 from openaudible.tui.app import (
     OpenAudibleApp, fmt_runtime, status_icon, convert_status, download_status,
+    transcribe_status, _whisper_end_secs,
 )
 
 
@@ -35,6 +36,20 @@ def test_download_status():
     assert download_status(50 * 1048576, 100 * 1048576) \
         == "⏬ downloading 50% · 50/100 MB"
     assert download_status(10 * 1048576, None) == "⏬ downloading 10 MB"
+
+
+def test_whisper_end_secs_parses_timestamps():
+    assert _whisper_end_secs("[00:00.000 --> 00:02.400]  hi") == 2.4
+    assert _whisper_end_secs("[01:02:03.500 --> 01:02:05.000]  x") == 3725.0
+    assert _whisper_end_secs("no timestamp") is None
+
+
+def test_transcribe_status_percent_and_eta():
+    # 1800s done of a 10h (36000s) book in 600s -> 5%, ~3h10m remaining
+    assert transcribe_status(1800, 36000, 600) == "📝 transcribing 5% · ETA 3h10m"
+    # unknown runtime or no progress yet -> bare label
+    assert transcribe_status(1800, 0, 600) == "📝 transcribing"
+    assert transcribe_status(0, 36000, 5) == "📝 transcribing"
 
 
 @pytest.fixture(autouse=True)
