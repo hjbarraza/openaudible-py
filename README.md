@@ -8,7 +8,7 @@ Most Python Audible tools are command-line only. This one is a full-screen **TUI
 — cover art, live progress, search, sort, one-key downloads — with a scriptable
 CLI underneath. An open-source take on OpenAudible.
 
-![openaudible-tui](docs/tui.png)
+![openaudible-tui](assets/tui.png)
 
 </div>
 
@@ -174,3 +174,7 @@ Chapters and cover art are preserved.
 pip install -e ".[dev]"
 pytest
 ```
+
+## License
+
+[MIT](LICENSE)

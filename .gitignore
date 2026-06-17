@@ -6,6 +6,8 @@ build/
 dist/
 *.egg-info/
 .pytest_cache/
+# local design/planning docs (not part of the public repo)
+docs/
 # runtime data
 auth.json
 library.db
