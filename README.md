@@ -89,6 +89,21 @@ CSV/JSON export.
 > provided for lawful personal use only; the authors accept no liability for
 > misuse. If DRM circumvention is restricted where you live, do not use it.
 
+> [!IMPORTANT]
+> **Anti-piracy notice.** This project does **not** crack or break DRM. It uses
+> *your own* decryption key — fetched from Audible's servers with your own
+> credentials — to decrypt audiobooks **you have purchased**, exactly as the
+> official Audible app does on your behalf.
+>
+> Use it only to gain full access to **your own** library: archiving, format
+> conversion, convenience. **De-DRMed audiobooks must never be uploaded to
+> public servers, torrents, or any form of mass distribution.** No help will be
+> given to anyone doing this.
+>
+> **Support authors. Buy books.** Writers, narrators, retailers, and publishers
+> all need to make a living so they can keep producing the audiobooks we love.
+> **Don't be a parasite.**
+
 ## Install
 
 ```sh
