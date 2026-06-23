@@ -172,7 +172,7 @@ HELP_TEXT = """[b]openaudible — keyboard controls[/b]
   c                 cancel this book's job
   m                 cycle read status   ·   n  show notes/bookmarks
   e                 edit metadata        ·   F  auto-fill from Audible
-  T                 transcribe (local Whisper)
+  T                 transcribe (local Whisper; downloads first if needed)
 
 [b $accent]Player[/]
   space pause · x stop · [ ] chapter · - = speed · f/b ±30s
@@ -908,6 +908,43 @@ class OpenAudibleApp(App):
         self._after_job(asin)
 
     # ---- transcribe ----
+    def _get_for_transcribe(self, asin: str, book) -> bool:
+        """Download + de-DRM + convert a book on the transcribe worker so that
+        pressing transcribe on an un-fetched book just works. Returns True on
+        success; reports failure and returns False otherwise."""
+        last = {"d": -1, "c": -1}  # throttle UI updates to whole-percent changes
+        self.call_from_thread(self.set_status, asin, "⏬ downloading")
+        self.call_from_thread(self.log_line, f"[yellow]Downloading[/yellow] {book.title}")
+
+        def on_download(written: int, total) -> None:
+            pct = int(written * 100 / total) if total else written // (1 << 21)
+            if pct == last["d"]:
+                return
+            last["d"] = pct
+            self.call_from_thread(self.set_status, asin, download_status(written, total))
+
+        def on_convert(line: str) -> None:
+            i = line.find("time=")
+            if i == -1:
+                return
+            secs = _time_to_secs(line[i + 5:].split(" ")[0].split(".")[0])
+            pct = int(secs * 100 / (book.runtime_min * 60)) if book.runtime_min else secs
+            if pct == last["c"]:
+                return
+            last["c"] = pct
+            self.call_from_thread(self.set_status, asin,
+                                  convert_status(line, book.runtime_min))
+
+        try:
+            process_book(auth=self.get_auth(), cfg=self.cfg, book=book,
+                         on_progress=on_convert, on_download=on_download)
+        except Exception as exc:
+            self.call_from_thread(self._transcribe_failed, asin, str(exc))
+            return False
+        self.catalog.mark(asin, downloaded=True, converted=True)
+        self.call_from_thread(self._set_cell, asin, "●")
+        return True
+
     def action_transcribe(self) -> None:
         asin = self.selected_asin()
         if not asin:
@@ -915,15 +952,15 @@ class OpenAudibleApp(App):
         book = self.catalog.get(asin)
         if not book:
             return
-        if not book_file(self.cfg, book).exists():
-            self.notify("Not converted yet — press g first.", severity="error")
-            return
         if asin in self._transcribing:
             self.notify("Already transcribing this book.")
             return
+        # A book that isn't downloaded yet is fetched + converted automatically
+        # before transcription, so this needs an authenticated session.
+        if not book_file(self.cfg, book).exists() and self.get_auth() is None:
+            self.notify("Not logged in. Run 'openaudible login'.", severity="error")
+            return
         self._transcribing.add(asin)
-        self.set_status(asin, "📝 transcribing")
-        self.log_line(f"[yellow]Transcribing[/yellow] {book.title}")
         self.run_transcribe(asin)
 
     @work(thread=True, group="transcribe")
@@ -931,6 +968,12 @@ class OpenAudibleApp(App):
         from ..transcribe import TranscriptionError, transcribe
         book = self.catalog.get(asin)
         path = book_file(self.cfg, book)
+        if not path.exists():
+            if not self._get_for_transcribe(asin, book):
+                return
+            path = book_file(self.cfg, book)
+        self.call_from_thread(self.set_status, asin, "📝 transcribing")
+        self.call_from_thread(self.log_line, f"[yellow]Transcribing[/yellow] {book.title}")
         total_secs = book.runtime_min * 60 if book.runtime_min else 0
         start = time.monotonic()
         last_pct = {"v": -1}  # throttle UI updates to whole-percent changes
