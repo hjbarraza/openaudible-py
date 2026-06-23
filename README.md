@@ -148,9 +148,11 @@ openaudible-tui
 |---|---|---|---|
 | `Enter` get / play | `g` get | `a` get all | `c` cancel |
 | `p` play | `o` folder | `m` read status | `n` notes |
-| `e` edit | `F` auto-fill | `T` transcribe | `t` sort |
+| `e` edit | `F` auto-fill | `T` transcribe&nbsp;* | `t` sort |
 | `/` search | `s` sync | `l` / `L` log in / out | `r` refresh |
 | `?` help | `q` quit | | |
+
+\* `T` transcribes with local Whisper, downloading + converting the book first if it isn't local yet — so `g` is no longer needed before it.
 
 Movement: `j` `k`, arrows, PgUp/PgDn, Home/End, `Ctrl+U` / `Ctrl+D`.
 Player: `space` pause · `x` stop · `[` `]` chapter · `-` `=` speed · `f` `b` ±30s.

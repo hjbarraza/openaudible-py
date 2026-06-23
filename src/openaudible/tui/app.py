@@ -256,7 +256,8 @@ class OpenAudibleApp(App):
     """
     BINDINGS = [
         Binding("enter", "primary", "Get/Play"),
-        Binding("g", "get", "Get"),
+        # g still downloads; hidden from the footer since T downloads too.
+        Binding("g", "get", "Get", show=False),
         Binding("p", "play", "Play"),
         Binding("T", "transcribe", "Transcribe"),
         Binding("o", "open_folder", "Folder"),
