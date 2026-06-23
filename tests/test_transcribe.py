@@ -2,9 +2,12 @@ from pathlib import Path
 
 import pytest
 
+import json
+
 from openaudible import transcribe as tx
 from openaudible.transcribe import (
     TranscriptionError, backends, build_args, transcript_path, transcribe,
+    _merge, _shift_timestamps,
 )
 
 
@@ -59,3 +62,44 @@ def test_transcribe_cancel_before_start_raises(tmp_path):
     src.write_bytes(b"\0" * 2048)
     with pytest.raises(TranscriptionError, match="canceled"):
         transcribe(src=src, cancel_check=lambda: True)
+
+
+def test_shift_timestamps_offsets_both_separators():
+    assert _shift_timestamps("00:00:01,500", 60) == "00:01:01,500"   # srt comma
+    assert _shift_timestamps("00:00:02.000", 3600) == "01:00:02.000"  # vtt dot
+
+
+def test_merge_txt_joins_chunks():
+    assert _merge([("one.\n", 0.0), ("two.\n", 1800.0)], "txt") == "one.\ntwo.\n"
+
+
+def test_merge_srt_renumbers_and_offsets():
+    c0 = "1\n00:00:00,000 --> 00:00:02,000\nhello\n"
+    c1 = "1\n00:00:01,000 --> 00:00:03,000\nworld\n"
+    out = _merge([(c0, 0.0), (c1, 1800.0)], "srt")
+    # cues renumbered 1,2 and second chunk shifted by 30 min
+    assert "1\n00:00:00,000 --> 00:00:02,000\nhello" in out
+    assert "2\n00:30:01,000 --> 00:30:03,000\nworld" in out
+
+
+def test_merge_vtt_single_header_and_offset():
+    c0 = "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nhello\n"
+    c1 = "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nworld\n"
+    out = _merge([(c0, 0.0), (c1, 1800.0)], "vtt")
+    assert out.count("WEBVTT") == 1
+    assert "00:30:01.000 --> 00:30:03.000\nworld" in out
+
+
+def test_merge_json_offsets_segments_and_concatenates_text():
+    c0 = json.dumps({"text": "hello", "language": "en",
+                     "segments": [{"id": 0, "start": 0.0, "end": 2.0,
+                                   "words": [{"start": 0.0, "end": 1.0}]}]})
+    c1 = json.dumps({"text": "world", "language": "en",
+                     "segments": [{"id": 0, "seek": 0, "start": 1.0, "end": 3.0}]})
+    out = json.loads(_merge([(c0, 0.0), (c1, 1800.0)], "json"))
+    assert out["text"] == "hello world"
+    assert out["language"] == "en"
+    assert [s["id"] for s in out["segments"]] == [0, 1]
+    assert out["segments"][1]["start"] == 1801.0
+    assert out["segments"][0]["words"][0]["end"] == 1.0
+    assert "seek" not in out["segments"][1]  # chunk-local frame offset dropped
