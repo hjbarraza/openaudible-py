@@ -130,6 +130,36 @@ def _extract_chunk(*, src: Path, start: float, dur: float, dst: Path,
         raise TranscriptionError(r.stderr[-2000:] or "ffmpeg chunk failed")
 
 
+def _shift_progress_line(line: str, offset: float) -> str:
+    """Rewrite a whisper segment line "[start --> end] text" to absolute time
+    by adding `offset` seconds. Per-chunk whisper restarts its clock at 0, so
+    without this a progress reader sees time reset every chunk. Non-segment
+    lines pass through unchanged."""
+    if "-->" not in line or "[" not in line or "]" not in line:
+        return line
+    try:
+        inside = line[line.index("[") + 1:line.index("]")]
+        a, b = (s.strip() for s in inside.split("-->"))
+        return (f"[{_fmt_clock(_parse_clock(a) + offset)} --> "
+                f"{_fmt_clock(_parse_clock(b) + offset)}]"
+                + line[line.index("]") + 1:])
+    except (ValueError, IndexError):
+        return line
+
+
+def _parse_clock(stamp: str) -> float:
+    secs = 0.0
+    for p in stamp.split(":"):
+        secs = secs * 60 + float(p)
+    return secs
+
+
+def _fmt_clock(secs: float) -> str:
+    hh, rem = divmod(secs, 3600)
+    mins, ss = divmod(rem, 60)
+    return f"{int(hh):02d}:{int(mins):02d}:{ss:06.3f}"
+
+
 def _run_whisper(*, exe: str, src: Path, dst_dir: Path, name: str, model: str,
                  fmt: str, language: Optional[str], out: Path,
                  on_progress: Optional[Callable[[str], None]],
@@ -201,9 +231,14 @@ def transcribe(*, src: Path, model: Optional[str] = None, fmt: str = "txt",
             cout = tmp / f"chunk_{i:04d}.{fmt}"
             if on_progress:
                 on_progress(f"part {i + 1}/{n}: transcribing…")
+            # Forward whisper progress with chunk-absolute timestamps so a
+            # progress reader sees a monotonic clock across the whole book.
+            chunk_progress = (
+                (lambda ln, off=float(start): on_progress(_shift_progress_line(ln, off)))
+                if on_progress else None)
             _run_whisper(exe=exe, src=chunk, dst_dir=tmp, name=chunk.stem,
                          model=model, fmt=fmt, language=language, out=cout,
-                         on_progress=on_progress, cancel_check=cancel_check)
+                         on_progress=chunk_progress, cancel_check=cancel_check)
             parts.append((cout.read_text(encoding="utf-8"), float(start)))
             # Free the chunk WAV + transcript now; a long book's WAVs are GBs.
             chunk.unlink(missing_ok=True)

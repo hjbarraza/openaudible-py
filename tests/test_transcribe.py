@@ -7,7 +7,7 @@ import json
 from openaudible import transcribe as tx
 from openaudible.transcribe import (
     TranscriptionError, backends, build_args, transcript_path, transcribe,
-    _merge, _shift_timestamps,
+    _merge, _shift_timestamps, _shift_progress_line,
 )
 
 
@@ -67,6 +67,23 @@ def test_transcribe_cancel_before_start_raises(tmp_path):
 def test_shift_timestamps_offsets_both_separators():
     assert _shift_timestamps("00:00:01,500", 60) == "00:01:01,500"   # srt comma
     assert _shift_timestamps("00:00:02.000", 3600) == "01:00:02.000"  # vtt dot
+
+
+def test_shift_progress_line_makes_timestamps_absolute():
+    # whisper restarts each chunk at 0; +30min offset must make it absolute
+    line = "[00:00:05.000 --> 00:00:08.000]  hello"
+    out = _shift_progress_line(line, 1800.0)
+    assert out == "[00:30:05.000 --> 00:30:08.000]  hello"
+    # the TUI's end-seconds parser must then read monotonic time
+    from openaudible.tui.app import _whisper_end_secs
+    assert _whisper_end_secs(out) == 1808.0
+
+
+def test_shift_progress_line_handles_hourless_stamp_and_passthrough():
+    assert _shift_progress_line("[00:05.000 --> 00:08.000] hi", 60.0) == \
+        "[00:01:05.000 --> 00:01:08.000] hi"
+    assert _shift_progress_line("part 2/3: transcribing…", 1800.0) == \
+        "part 2/3: transcribing…"
 
 
 def test_merge_txt_joins_chunks():
